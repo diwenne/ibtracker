@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Subject, Assignment, SubjectType, calculatePercentage, getGrade, calculateRawPercent, percentToIBGrade, parseRawGrade, calculatePredictedGrade } from "@/lib/types";
+import { Subject, Assessment, SubjectType, calculatePercentage, getGrade, calculateRawPercent, percentToIBGrade, parseRawGrade, calculatePredictedGrade } from "@/lib/types";
 import { api } from "@/lib/api";
 import { createClient } from "@/lib/supabase";
 import Auth from "@/components/Auth";
@@ -69,13 +69,14 @@ export default function Home() {
   const [isOnboarding, setIsOnboarding] = useState(true);
   const [showTrends, setShowTrends] = useState(false);
   const [session, setSession] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false); // Start with false to avoid flash
 
   const supabase = createClient();
 
   // Check auth and load data
   useEffect(() => {
     setIsClient(true);
+    setLoading(true); // Set loading here instead
 
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -134,14 +135,14 @@ export default function Home() {
     }
   };
 
-  const addAssignment = async (subjectId: string, assignment: Omit<Assignment, 'id'>) => {
-    const newAssignment = await api.createAssignment(subjectId, assignment);
-    if (newAssignment) {
+  const addAssessment = async (subjectId: string, assessment: Omit<Assessment, 'id'>) => {
+    const newAssessment = await api.createAssignment(subjectId, assessment);
+    if (newAssessment) {
       setSubjects(subjects.map(sub => {
         if (sub.id === subjectId) {
           return {
             ...sub,
-            assignments: [newAssignment, ...sub.assignments].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+            assessments: [newAssessment, ...sub.assessments].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
           };
         }
         return sub;
@@ -149,15 +150,15 @@ export default function Home() {
     }
   };
 
-  const updateAssignment = async (subjectId: string, assignmentId: string, updatedAssignment: Omit<Assignment, 'id'>) => {
-    const updated = await api.updateAssignment(assignmentId, updatedAssignment);
+  const updateAssessment = async (subjectId: string, assessmentId: string, updatedAssessment: Omit<Assessment, 'id'>) => {
+    const updated = await api.updateAssignment(assessmentId, updatedAssessment);
     if (updated) {
       setSubjects(subjects.map(sub => {
         if (sub.id === subjectId) {
           return {
             ...sub,
-            assignments: sub.assignments.map(a =>
-              a.id === assignmentId
+            assessments: sub.assessments.map(a =>
+              a.id === assessmentId
                 ? updated
                 : a
             ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
@@ -168,14 +169,14 @@ export default function Home() {
     }
   };
 
-  const deleteAssignment = async (subjectId: string, assignmentId: string) => {
-    const success = await api.deleteAssignment(assignmentId);
+  const deleteAssessment = async (subjectId: string, assessmentId: string) => {
+    const success = await api.deleteAssignment(assessmentId);
     if (success) {
       setSubjects(subjects.map(sub => {
         if (sub.id === subjectId) {
           return {
             ...sub,
-            assignments: sub.assignments.filter(a => a.id !== assignmentId)
+            assessments: sub.assessments.filter(a => a.id !== assessmentId)
           };
         }
         return sub;
@@ -185,8 +186,8 @@ export default function Home() {
 
   // Calculate total predicted grade (out of 42)
   const totalPredicted = subjects.reduce((total, subject) => {
-    if (subject.assignments.length === 0) return total; // Skip subjects with no assignments
-    const grade = calculatePredictedGrade(subject.assignments);
+    if (subject.assessments.length === 0) return total; // Skip subjects with no assessments
+    const grade = calculatePredictedGrade(subject.assessments);
     return total + grade;
   }, 0);
 
@@ -312,8 +313,8 @@ export default function Home() {
         <section className="w-full max-w-3xl">
           <div className="grid grid-cols-2 gap-x-16 gap-y-4">
             {subjects.map((subject) => {
-              const percentage = calculatePercentage(subject.assignments, subject.type);
-              const grade = calculatePredictedGrade(subject.assignments);
+              const percentage = calculatePercentage(subject.assessments, subject.type);
+              const grade = calculatePredictedGrade(subject.assessments);
 
               return (
                 <SubjectGradeCard
@@ -321,9 +322,9 @@ export default function Home() {
                   subject={subject}
                   grade={grade}
                   percentage={percentage}
-                  onAddAssignment={addAssignment}
-                  onUpdateAssignment={updateAssignment}
-                  onDeleteAssignment={deleteAssignment}
+                  onAddAssessment={addAssessment}
+                  onUpdateAssessment={updateAssessment}
+                  onDeleteAssessment={deleteAssessment}
                   onUpdateSubject={updateSubject}
                 />
               );
@@ -372,21 +373,21 @@ function SubjectGradeCard({
   subject,
   grade,
   percentage,
-  onAddAssignment,
-  onUpdateAssignment,
-  onDeleteAssignment,
+  onAddAssessment,
+  onUpdateAssessment,
+  onDeleteAssessment,
   onUpdateSubject
 }: {
   subject: Subject;
   grade: number;
   percentage: number;
-  onAddAssignment: (sid: string, assignment: Omit<Assignment, 'id'>) => void;
-  onUpdateAssignment: (sid: string, aid: string, assignment: Omit<Assignment, 'id'>) => void;
-  onDeleteAssignment: (sid: string, aid: string) => void;
+  onAddAssessment: (sid: string, assessment: Omit<Assessment, 'id'>) => void;
+  onUpdateAssessment: (sid: string, aid: string, assessment: Omit<Assessment, 'id'>) => void;
+  onDeleteAssessment: (sid: string, aid: string) => void;
   onUpdateSubject: (id: string, name: string, type: SubjectType) => void;
 }) {
   const [showDetails, setShowDetails] = useState(false);
-  const [editingAssignment, setEditingAssignment] = useState<Assignment | null>(null);
+  const [editingAssessment, setEditingAssessment] = useState<Assessment | null>(null);
   const [isEditingSubject, setIsEditingSubject] = useState(false);
 
   // Determine color based on grade quality
@@ -405,13 +406,13 @@ function SubjectGradeCard({
         <div className="group cursor-pointer transition-all hover:opacity-80">
           {/* Just the number and subject name - transparent, minimal */}
           <div className="flex flex-col items-center space-y-1.5">
-            <span className={`text-4xl font-semibold ${subject.assignments.length === 0 ? 'text-muted-foreground/60' : getGradeColor(grade)}`}>
-              {subject.assignments.length === 0 ? 'N/A' : grade}
+            <span className={`text-4xl font-semibold ${subject.assessments.length === 0 ? 'text-muted-foreground/60' : getGradeColor(grade)}`}>
+              {subject.assessments.length === 0 ? 'N/A' : grade}
             </span>
             <div className="text-center">
               <p className="text-sm font-medium text-foreground/80">{subject.name}</p>
               <p className="text-xs text-muted-foreground/60">
-                {subject.type}{subject.assignments.length === 0 ? ' • No data' : percentage > 0 ? ` • ${percentage.toFixed(0)}%` : ''}
+                {subject.type}{subject.assessments.length === 0 ? ' • No data' : percentage > 0 ? ` • ${percentage.toFixed(0)}%` : ''}
               </p>
             </div>
           </div>
@@ -434,8 +435,8 @@ function SubjectGradeCard({
             </DialogTitle>
           </div>
           <DialogDescription>
-            {subject.assignments.length === 0 ? (
-              'No assignments yet'
+            {subject.assessments.length === 0 ? (
+              'No assessments yet'
             ) : (
               `Current Grade: ${grade} • ${percentage.toFixed(1)}%`
             )}
@@ -444,25 +445,25 @@ function SubjectGradeCard({
 
         <div className="space-y-4 py-4">
           <div className="flex justify-between items-center">
-            <h3 className="font-medium">Assignments</h3>
-            <AddAssignmentDialog subject={subject} onAdd={onAddAssignment} />
+            <h3 className="font-medium">Assessments</h3>
+            <AddAssessmentDialog subject={subject} onAdd={onAddAssessment} />
           </div>
 
-          {subject.assignments.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8 text-sm">No assignments yet</p>
+          {subject.assessments.length === 0 ? (
+            <p className="text-center text-muted-foreground py-8 text-sm">No assessments yet</p>
           ) : (
             <div className="space-y-2">
-              {subject.assignments.map((assignment) => {
+              {subject.assessments.map((assessment) => {
                 // Calculate display values
                 let displayPercent = 0;
-                const displayGrade = assignment.ibGrade;
-                const displayRawGrade = assignment.rawGrade || '';
+                const displayGrade = assessment.ibGrade;
+                const displayRawGrade = assessment.rawGrade || '';
 
-                if (assignment.rawPercent !== undefined) {
-                  displayPercent = assignment.rawPercent;
-                } else if (subject.type === 'SL' && assignment.rawGrade) {
+                if (assessment.rawPercent !== undefined) {
+                  displayPercent = assessment.rawPercent;
+                } else if (subject.type === 'SL' && assessment.rawGrade) {
                   // Only auto-calculate percentage from raw grade for SL (HL is scaled)
-                  const parsed = parseRawGrade(assignment.rawGrade);
+                  const parsed = parseRawGrade(assessment.rawGrade);
                   if (parsed) {
                     displayPercent = calculateRawPercent(parsed.score, parsed.total);
                   }
@@ -470,11 +471,11 @@ function SubjectGradeCard({
 
                 return (
                   <div
-                    key={assignment.id}
+                    key={assessment.id}
                     className="flex items-center justify-between p-3 rounded-lg bg-accent/30 hover:bg-accent/50 transition-colors cursor-pointer"
-                    onClick={() => setEditingAssignment(assignment)}
+                    onClick={() => setEditingAssessment(assessment)}
                   >
-                    <span className="font-medium">{assignment.name}</span>
+                    <span className="font-medium">{assessment.name}</span>
                     <div className="flex items-center gap-4">
                       {displayRawGrade && (
                         <span className="text-sm text-muted-foreground">
@@ -495,7 +496,7 @@ function SubjectGradeCard({
                         className="h-7 w-7 text-muted-foreground hover:text-destructive"
                         onClick={(e) => {
                           e.stopPropagation();
-                          onDeleteAssignment(subject.id, assignment.id);
+                          onDeleteAssessment(subject.id, assessment.id);
                         }}
                       >
                         <Trash2 className="h-3 w-3" />
@@ -507,15 +508,15 @@ function SubjectGradeCard({
             </div>
           )}
 
-          {editingAssignment && (
-            <EditAssignmentDialog
+          {editingAssessment && (
+            <EditAssessmentDialog
               subject={subject}
-              assignment={editingAssignment}
-              open={!!editingAssignment}
-              onOpenChange={(open) => !open && setEditingAssignment(null)}
+              assessment={editingAssessment}
+              open={!!editingAssessment}
+              onOpenChange={(open) => !open && setEditingAssessment(null)}
               onUpdate={(updated) => {
-                onUpdateAssignment(subject.id, editingAssignment.id, updated);
-                setEditingAssignment(null);
+                onUpdateAssessment(subject.id, editingAssessment.id, updated);
+                setEditingAssessment(null);
               }}
             />
           )}
@@ -590,7 +591,7 @@ function SetupSubjectDialog({ onAdd, subjectNumber }: { onAdd: (name: string, ty
   );
 }
 
-function AddAssignmentDialog({ subject, onAdd }: { subject: Subject, onAdd: (sid: string, assignment: Omit<Assignment, 'id'>) => void }) {
+function AddAssessmentDialog({ subject, onAdd }: { subject: Subject, onAdd: (sid: string, assessment: Omit<Assessment, 'id'>) => void }) {
   const [name, setName] = useState("");
   const [ibGrade, setIbGrade] = useState("");
   const [rawGrade, setRawGrade] = useState("");
@@ -626,7 +627,7 @@ function AddAssignmentDialog({ subject, onAdd }: { subject: Subject, onAdd: (sid
       return;
     }
 
-    const assignment: Omit<Assignment, 'id'> = {
+    const assessment: Omit<Assessment, 'id'> = {
       name,
       ibGrade: parseInt(ibGrade),
       date: parsedDate.date,
@@ -634,28 +635,28 @@ function AddAssignmentDialog({ subject, onAdd }: { subject: Subject, onAdd: (sid
 
     // Handle raw grade (e.g., "31/32")
     if (rawGrade) {
-      assignment.rawGrade = rawGrade;
+      assessment.rawGrade = rawGrade;
 
       // Auto-calculate percentage for SL only (HL is scaled, so don't auto-calculate)
       if (subject.type === 'SL' && !rawPercent) {
         const parsed = parseRawGrade(rawGrade);
         if (parsed) {
-          assignment.rawPercent = calculateRawPercent(parsed.score, parsed.total);
+          assessment.rawPercent = calculateRawPercent(parsed.score, parsed.total);
         }
       }
     }
 
     // Handle raw percent
     if (rawPercent) {
-      assignment.rawPercent = parseFloat(rawPercent);
+      assessment.rawPercent = parseFloat(rawPercent);
     }
 
     // Handle notes
     if (notes) {
-      assignment.notes = notes;
+      assessment.notes = notes;
     }
 
-    onAdd(subject.id, assignment);
+    onAdd(subject.id, assessment);
     setName("");
     setIbGrade("");
     setRawGrade("");
@@ -671,19 +672,19 @@ function AddAssignmentDialog({ subject, onAdd }: { subject: Subject, onAdd: (sid
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button size="sm" className="gap-2">
-          <Plus className="h-3 w-3" /> Add Assignment
+          <Plus className="h-3 w-3" /> Add Assessment
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add Assignment</DialogTitle>
+          <DialogTitle>Add Assessment</DialogTitle>
           <DialogDescription>
             Name and IB grade are required.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 pt-4">
           <div className="space-y-2">
-            <Label htmlFor="assign-name">Assignment Name</Label>
+            <Label htmlFor="assign-name">Assessment Name</Label>
             <Input id="assign-name" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Unit Test 1" required />
           </div>
 
@@ -733,11 +734,11 @@ function AddAssignmentDialog({ subject, onAdd }: { subject: Subject, onAdd: (sid
 
           <div className="space-y-2">
             <Label htmlFor="notes" className="text-muted-foreground">Notes (optional)</Label>
-            <Input id="notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Add any notes about this assignment..." />
+            <Input id="notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Add any notes about this assessment..." />
           </div>
 
           <DialogFooter>
-            <Button type="submit" disabled={!name || !ibGrade}>Add Assignment</Button>
+            <Button type="submit" disabled={!name || !ibGrade}>Add Assessment</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -745,25 +746,25 @@ function AddAssignmentDialog({ subject, onAdd }: { subject: Subject, onAdd: (sid
   );
 }
 
-function EditAssignmentDialog({
+function EditAssessmentDialog({
   subject,
-  assignment,
+  assessment,
   open,
   onOpenChange,
   onUpdate
 }: {
   subject: Subject;
-  assignment: Assignment;
+  assessment: Assessment;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onUpdate: (assignment: Omit<Assignment, 'id'>) => void;
+  onUpdate: (assessment: Omit<Assessment, 'id'>) => void;
 }) {
-  const [name, setName] = useState(assignment.name);
-  const [ibGrade, setIbGrade] = useState(assignment.ibGrade?.toString() ?? "4");
-  const [rawGrade, setRawGrade] = useState(assignment.rawGrade ?? "");
-  const [rawPercent, setRawPercent] = useState(assignment.rawPercent?.toString() ?? "");
-  const [notes, setNotes] = useState(assignment.notes ?? "");
-  const [date, setDate] = useState(formatDateForDisplay(assignment.date));
+  const [name, setName] = useState(assessment.name);
+  const [ibGrade, setIbGrade] = useState(assessment.ibGrade?.toString() ?? "4");
+  const [rawGrade, setRawGrade] = useState(assessment.rawGrade ?? "");
+  const [rawPercent, setRawPercent] = useState(assessment.rawPercent?.toString() ?? "");
+  const [notes, setNotes] = useState(assessment.notes ?? "");
+  const [date, setDate] = useState(formatDateForDisplay(assessment.date));
   const [dateError, setDateError] = useState("");
 
   // Auto-fill IB grade from percentage for SL classes
@@ -791,7 +792,7 @@ function EditAssignmentDialog({
       return;
     }
 
-    const updatedAssignment: Omit<Assignment, 'id'> = {
+    const updatedAssessment: Omit<Assessment, 'id'> = {
       name,
       ibGrade: parseInt(ibGrade),
       date: parsedDate.date,
@@ -799,28 +800,28 @@ function EditAssignmentDialog({
 
     // Handle raw grade (e.g., "31/32")
     if (rawGrade) {
-      updatedAssignment.rawGrade = rawGrade;
+      updatedAssessment.rawGrade = rawGrade;
 
       // Auto-calculate percentage for SL only (HL is scaled, so don't auto-calculate)
       if (subject.type === 'SL' && !rawPercent) {
         const parsed = parseRawGrade(rawGrade);
         if (parsed) {
-          updatedAssignment.rawPercent = calculateRawPercent(parsed.score, parsed.total);
+          updatedAssessment.rawPercent = calculateRawPercent(parsed.score, parsed.total);
         }
       }
     }
 
     // Handle raw percent
     if (rawPercent) {
-      updatedAssignment.rawPercent = parseFloat(rawPercent);
+      updatedAssessment.rawPercent = parseFloat(rawPercent);
     }
 
     // Handle notes
     if (notes) {
-      updatedAssignment.notes = notes;
+      updatedAssessment.notes = notes;
     }
 
-    onUpdate(updatedAssignment);
+    onUpdate(updatedAssessment);
     onOpenChange(false);
   };
 
@@ -828,14 +829,14 @@ function EditAssignmentDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Edit Assignment</DialogTitle>
+          <DialogTitle>Edit Assessment</DialogTitle>
           <DialogDescription>
             Name and IB grade are required.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 pt-4">
           <div className="space-y-2">
-            <Label htmlFor="edit-name">Assignment Name</Label>
+            <Label htmlFor="edit-name">Assessment Name</Label>
             <Input id="edit-name" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Unit Test 1" required />
           </div>
 
@@ -885,7 +886,7 @@ function EditAssignmentDialog({
 
           <div className="space-y-2">
             <Label htmlFor="edit-notes" className="text-muted-foreground">Notes (optional)</Label>
-            <Input id="edit-notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Add any notes about this assignment..." />
+            <Input id="edit-notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Add any notes about this assessment..." />
           </div>
 
           <DialogFooter>
@@ -1049,13 +1050,13 @@ function TrendsView({ subjects, onBack }: { subjects: Subject[], onBack: () => v
 }
 
 function calculateTrendData(subjects: Subject[]) {
-  // Collect all unique dates from all assignments (normalize to YYYY-MM-DD format)
+  // Collect all unique dates from all assessments (normalize to YYYY-MM-DD format)
   const dateMap = new Map<string, boolean>();
 
   subjects.forEach(subject => {
-    subject.assignments.forEach(assignment => {
+    subject.assessments.forEach(assessment => {
       // Normalize date to ensure consistency
-      const normalizedDate = assignment.date.split('T')[0]; // Remove time if present
+      const normalizedDate = assessment.date.split('T')[0]; // Remove time if present
       dateMap.set(normalizedDate, true);
     });
   });
@@ -1075,14 +1076,14 @@ function calculateTrendData(subjects: Subject[]) {
 
     // For each subject, calculate its predicted grade up to this date
     subjects.forEach(subject => {
-      const assignmentsUpToDate = subject.assignments.filter(a => {
-        const assignmentDate = a.date.split('T')[0];
-        return new Date(assignmentDate) <= new Date(currentDate);
+      const assessmentsUpToDate = subject.assessments.filter(a => {
+        const assessmentDate = a.date.split('T')[0];
+        return new Date(assessmentDate) <= new Date(currentDate);
       });
 
-      if (assignmentsUpToDate.length > 0) {
+      if (assessmentsUpToDate.length > 0) {
         const avg = Math.round(
-          assignmentsUpToDate.reduce((sum, a) => sum + a.ibGrade, 0) / assignmentsUpToDate.length
+          assessmentsUpToDate.reduce((sum, a) => sum + a.ibGrade, 0) / assessmentsUpToDate.length
         );
         subjectGrades[subject.name] = avg;
         totalGrade += avg;
@@ -1090,7 +1091,7 @@ function calculateTrendData(subjects: Subject[]) {
       }
     });
 
-    // Only include predicted total if all 6 subjects have at least one assignment
+    // Only include predicted total if all 6 subjects have at least one assessment
     const predictedGrade = subjectsWithGrades === 6 ? totalGrade : 0;
 
     trendData.push({

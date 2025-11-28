@@ -1,5 +1,5 @@
 import { createClient } from './supabase';
-import { Subject, Assignment, SubjectType } from './types';
+import { Subject, Assessment, SubjectType } from './types';
 import { Subject as DBSubject, Assignment as DBAssignment } from '@/types/database';
 
 export const api = {
@@ -27,14 +27,15 @@ export const api = {
             id: sub.id,
             name: sub.name,
             type: sub.type as SubjectType,
-            assignments: (sub.assignments || []).map((assign: any) => ({
+            assessments: (sub.assignments || []).map((assign: any) => ({
                 id: assign.id,
                 name: assign.name,
                 ibGrade: assign.ib_grade,
                 rawGrade: assign.raw_grade,
                 rawPercent: assign.raw_percent,
                 date: assign.date,
-            })).sort((a: Assignment, b: Assignment) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                notes: assign.notes,
+            })).sort((a: Assessment, b: Assessment) => new Date(b.date).getTime() - new Date(a.date).getTime())
         }));
     },
 
@@ -64,7 +65,7 @@ export const api = {
             id: data.id,
             name: data.name,
             type: data.type as SubjectType,
-            assignments: []
+            assessments: []
         };
     },
 
@@ -100,11 +101,11 @@ export const api = {
             id: data.id,
             name: data.name,
             type: data.type as SubjectType,
-            assignments: [] // We don't need to return assignments here as we are just updating the subject details
+            assessments: [] // We don't need to return assessments here as we are just updating the subject details
         };
     },
 
-    createAssignment: async (subjectId: string, assignment: Omit<Assignment, 'id'>): Promise<Assignment | null> => {
+    createAssignment: async (subjectId: string, assessment: Omit<Assessment, 'id'>): Promise<Assessment | null> => {
         const supabase = createClient();
         const { data: user } = await supabase.auth.getUser();
 
@@ -115,17 +116,18 @@ export const api = {
             .insert({
                 subject_id: subjectId,
                 user_id: user.user.id,
-                name: assignment.name,
-                ib_grade: assignment.ibGrade,
-                raw_grade: assignment.rawGrade,
-                raw_percent: assignment.rawPercent,
-                date: assignment.date,
+                name: assessment.name,
+                ib_grade: assessment.ibGrade,
+                raw_grade: assessment.rawGrade,
+                raw_percent: assessment.rawPercent,
+                date: assessment.date,
+                notes: assessment.notes,
             })
             .select()
             .single();
 
         if (error) {
-            console.error('Error creating assignment:', error);
+            console.error('Error creating assessment:', error);
             return null;
         }
 
@@ -135,28 +137,30 @@ export const api = {
             ibGrade: data.ib_grade,
             rawGrade: data.raw_grade,
             rawPercent: data.raw_percent,
-            date: data.date
+            date: data.date,
+            notes: data.notes,
         };
     },
 
-    updateAssignment: async (id: string, assignment: Omit<Assignment, 'id'>): Promise<Assignment | null> => {
+    updateAssignment: async (id: string, assessment: Omit<Assessment, 'id'>): Promise<Assessment | null> => {
         const supabase = createClient();
 
         const { data, error } = await supabase
             .from('assignments')
             .update({
-                name: assignment.name,
-                ib_grade: assignment.ibGrade,
-                raw_grade: assignment.rawGrade,
-                raw_percent: assignment.rawPercent,
-                date: assignment.date,
+                name: assessment.name,
+                ib_grade: assessment.ibGrade,
+                raw_grade: assessment.rawGrade,
+                raw_percent: assessment.rawPercent,
+                date: assessment.date,
+                notes: assessment.notes,
             })
             .eq('id', id)
             .select()
             .single();
 
         if (error) {
-            console.error('Error updating assignment:', error);
+            console.error('Error updating assessment:', error);
             return null;
         }
 
@@ -166,7 +170,8 @@ export const api = {
             ibGrade: data.ib_grade,
             rawGrade: data.raw_grade,
             rawPercent: data.raw_percent,
-            date: data.date
+            date: data.date,
+            notes: data.notes,
         };
     },
 
@@ -178,7 +183,7 @@ export const api = {
             .eq('id', id);
 
         if (error) {
-            console.error('Error deleting assignment:', error);
+            console.error('Error deleting assessment:', error);
             return false;
         }
         return true;
