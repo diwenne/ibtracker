@@ -7,7 +7,58 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { Subject, Assignment, SubjectType, calculatePercentage, getGrade, calculateRawPercent, percentToIBGrade, parseRawGrade, calculatePredictedGrade } from "@/lib/types";
+
+// Parse MM/DD/YYYY format to YYYY-MM-DD
+function parseDateInput(input: string): { valid: boolean; date: string; error?: string } {
+  const trimmed = input.trim();
+
+  // Match MM/DD/YYYY format
+  const match = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+
+  if (!match) {
+    return { valid: false, date: '', error: 'Invalid format. Use MM/DD/YYYY' };
+  }
+
+  const month = parseInt(match[1]);
+  const day = parseInt(match[2]);
+  const year = parseInt(match[3]);
+
+  // Validate ranges
+  if (month < 1 || month > 12) {
+    return { valid: false, date: '', error: 'Month must be between 1-12' };
+  }
+
+  if (day < 1 || day > 31) {
+    return { valid: false, date: '', error: 'Day must be between 1-31' };
+  }
+
+  if (year < 1900 || year > 2100) {
+    return { valid: false, date: '', error: 'Year must be between 1900-2100' };
+  }
+
+  // Create date object to validate it's a real date
+  const dateObj = new Date(year, month - 1, day);
+  if (dateObj.getMonth() !== month - 1 || dateObj.getDate() !== day) {
+    return { valid: false, date: '', error: 'Invalid date (e.g., Feb 30 doesn\'t exist)' };
+  }
+
+  // Convert to YYYY-MM-DD format
+  const paddedMonth = month.toString().padStart(2, '0');
+  const paddedDay = day.toString().padStart(2, '0');
+
+  return { valid: true, date: `${year}-${paddedMonth}-${paddedDay}` };
+}
+
+// Convert YYYY-MM-DD to MM/DD/YYYY for display
+function formatDateForDisplay(isoDate: string): string {
+  const parts = isoDate.split('T')[0].split('-');
+  if (parts.length === 3) {
+    return `${parseInt(parts[1])}/${parseInt(parts[2])}/${parts[0]}`;
+  }
+  return isoDate;
+}
 
 export default function Home() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -211,7 +262,7 @@ export default function Home() {
 
   // Trends view
   if (showTrends) {
-    return <TrendsView subjects={subjects} onBack={() => setShowTrends(false)} />;
+    return <TrendsView key={JSON.stringify(subjects)} subjects={subjects} onBack={() => setShowTrends(false)} />;
   }
 
   // Main dashboard view
@@ -505,7 +556,9 @@ function AddAssignmentDialog({ subject, onAdd }: { subject: Subject, onAdd: (sid
   const [ibGrade, setIbGrade] = useState("");
   const [rawGrade, setRawGrade] = useState("");
   const [rawPercent, setRawPercent] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const today = new Date();
+  const [date, setDate] = useState(`${today.getMonth() + 1}/${today.getDate()}/${today.getFullYear()}`);
+  const [dateError, setDateError] = useState("");
   const [open, setOpen] = useState(false);
 
   // Auto-fill IB grade from percentage for SL classes
@@ -526,10 +579,17 @@ function AddAssignmentDialog({ subject, onAdd }: { subject: Subject, onAdd: (sid
     e.preventDefault();
     if (!name || !ibGrade) return;
 
+    // Validate and parse date
+    const parsedDate = parseDateInput(date);
+    if (!parsedDate.valid) {
+      setDateError(parsedDate.error || 'Invalid date');
+      return;
+    }
+
     const assignment: Omit<Assignment, 'id'> = {
       name,
       ibGrade: parseInt(ibGrade),
-      date: date,
+      date: parsedDate.date,
     };
 
     // Handle raw grade (e.g., "31/32")
@@ -555,7 +615,9 @@ function AddAssignmentDialog({ subject, onAdd }: { subject: Subject, onAdd: (sid
     setIbGrade("");
     setRawGrade("");
     setRawPercent("");
-    setDate(new Date().toISOString().split('T')[0]);
+    const resetToday = new Date();
+    setDate(`${resetToday.getMonth() + 1}/${resetToday.getDate()}/${resetToday.getFullYear()}`);
+    setDateError("");
     setOpen(false);
   };
 
@@ -604,12 +666,23 @@ function AddAssignmentDialog({ subject, onAdd }: { subject: Subject, onAdd: (sid
 
           <div className="space-y-2">
             <Label htmlFor="rawPercent">Percentage</Label>
-            <Input id="rawPercent" type="number" step="0.1" min="0" max="100" value={rawPercent} onChange={e => handlePercentChange(e.target.value)} placeholder="96.8" />
+            <Input id="rawPercent" type="number" step="any" value={rawPercent} onChange={e => handlePercentChange(e.target.value)} placeholder="96.8" />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="date">Date</Label>
-            <Input id="date" type="date" value={date} onChange={e => setDate(e.target.value)} required />
+            <Label htmlFor="date">Date (MM/DD/YYYY)</Label>
+            <Input
+              id="date"
+              type="text"
+              value={date}
+              onChange={e => {
+                setDate(e.target.value);
+                setDateError(''); // Clear error on change
+              }}
+              placeholder="11/27/2024"
+              required
+            />
+            {dateError && <p className="text-sm text-red-500">{dateError}</p>}
           </div>
 
           <DialogFooter>
@@ -638,7 +711,8 @@ function EditAssignmentDialog({
   const [ibGrade, setIbGrade] = useState(assignment.ibGrade?.toString() ?? "4");
   const [rawGrade, setRawGrade] = useState(assignment.rawGrade ?? "");
   const [rawPercent, setRawPercent] = useState(assignment.rawPercent?.toString() ?? "");
-  const [date, setDate] = useState(assignment.date);
+  const [date, setDate] = useState(formatDateForDisplay(assignment.date));
+  const [dateError, setDateError] = useState("");
 
   // Auto-fill IB grade from percentage for SL classes
   const handlePercentChange = (value: string) => {
@@ -658,10 +732,17 @@ function EditAssignmentDialog({
     e.preventDefault();
     if (!name || !ibGrade) return;
 
+    // Validate and parse date
+    const parsedDate = parseDateInput(date);
+    if (!parsedDate.valid) {
+      setDateError(parsedDate.error || 'Invalid date');
+      return;
+    }
+
     const updatedAssignment: Omit<Assignment, 'id'> = {
       name,
       ibGrade: parseInt(ibGrade),
-      date: date,
+      date: parsedDate.date,
     };
 
     // Handle raw grade (e.g., "31/32")
@@ -726,12 +807,23 @@ function EditAssignmentDialog({
 
           <div className="space-y-2">
             <Label htmlFor="edit-rawPercent">Percentage</Label>
-            <Input id="edit-rawPercent" type="number" step="0.1" min="0" max="100" value={rawPercent} onChange={e => handlePercentChange(e.target.value)} placeholder="96.8" />
+            <Input id="edit-rawPercent" type="number" step="any" value={rawPercent} onChange={e => handlePercentChange(e.target.value)} placeholder="96.8" />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="edit-date">Date</Label>
-            <Input id="edit-date" type="date" value={date} onChange={e => setDate(e.target.value)} required />
+            <Label htmlFor="edit-date">Date (MM/DD/YYYY)</Label>
+            <Input
+              id="edit-date"
+              type="text"
+              value={date}
+              onChange={e => {
+                setDate(e.target.value);
+                setDateError(''); // Clear error on change
+              }}
+              placeholder="11/27/2024"
+              required
+            />
+            {dateError && <p className="text-sm text-red-500">{dateError}</p>}
           </div>
 
           <DialogFooter>
@@ -747,7 +839,7 @@ function TrendsView({ subjects, onBack }: { subjects: Subject[], onBack: () => v
   // Calculate trend data: array of {date, predictedGrade, subjectGrades: {[subjectName]: grade}}
   const trendData = calculateTrendData(subjects);
 
-  const [showPredicted, setShowPredicted] = useState(true);
+  const [showPredicted, setShowPredicted] = useState(false);
   const [visibleSubjects, setVisibleSubjects] = useState<Set<string>>(new Set(subjects.map(s => s.name)));
 
   const toggleSubject = (subjectName: string) => {
@@ -980,7 +1072,7 @@ function CombinedTrendChart({
   const onlyPredicted = showPredicted && visibleSubjects.size === 0;
   const showYAxis = onlySubjects || onlyPredicted;
 
-  const padding = { top: 30, right: 30, bottom: 50, left: showYAxis ? 50 : 30 };
+  const padding = { top: 30, right: 30, bottom: 50, left: showYAxis ? 70 : 30 };
 
   // Determine y-axis range
   let yMin = Infinity;
@@ -1093,9 +1185,9 @@ function CombinedTrendChart({
           return labels.map((label) => (
             <text
               key={label}
-              x={padding.left - 10}
+              x={20}
               y={yScale(label)}
-              textAnchor="end"
+              textAnchor="start"
               className="text-xs fill-muted-foreground"
               dominantBaseline="middle"
             >
@@ -1196,6 +1288,65 @@ function CombinedTrendChart({
           </g>
         )}
       </svg>
+
+      {/* Labels at the end of each trend line */}
+      <div className="absolute inset-0 pointer-events-none z-20">
+        {(() => {
+          // Collect all end points with their labels and colors
+          const endPoints: Array<{x: number, y: number, label: string, color: string}> = [];
+
+          subjectPaths.forEach((subjectPath) => {
+            if (subjectPath.points.length === 0) return;
+            const lastPoint = subjectPath.points[subjectPath.points.length - 1];
+            endPoints.push({ x: lastPoint.x, y: lastPoint.y, label: subjectPath.name, color: subjectPath.color });
+          });
+
+          if (showPredicted && predictedPoints.length > 0) {
+            const lastPoint = predictedPoints[predictedPoints.length - 1];
+            endPoints.push({ x: lastPoint.x, y: lastPoint.y, label: 'Predicted Total', color: '#6366f1' });
+          }
+
+          // Sort by y position to stack them
+          endPoints.sort((a, b) => a.y - b.y);
+
+          // Group points that are close together (within 25px vertically)
+          const groups: Array<Array<{x: number, y: number, label: string, color: string}>> = [];
+          endPoints.forEach(point => {
+            let addedToGroup = false;
+            for (const group of groups) {
+              const lastInGroup = group[group.length - 1];
+              if (Math.abs(point.y - lastInGroup.y) < 25) {
+                group.push(point);
+                addedToGroup = true;
+                break;
+              }
+            }
+            if (!addedToGroup) {
+              groups.push([point]);
+            }
+          });
+
+          // Render each group, stacking labels vertically
+          return groups.flatMap(group =>
+            group.map((point, index) => (
+              <div
+                key={point.label}
+                className="absolute"
+                style={{
+                  left: `${(point.x / chartWidth) * 100}%`,
+                  top: `${(point.y / chartHeight) * 100}%`,
+                  transform: `translate(2px, calc(-50% + ${index * 18}px))`,
+                }}
+              >
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-background text-muted-foreground border-muted-foreground/30 whitespace-nowrap flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: point.color }} />
+                  {point.label}
+                </Badge>
+              </div>
+            ))
+          );
+        })()}
+      </div>
     </div>
   );
 }
