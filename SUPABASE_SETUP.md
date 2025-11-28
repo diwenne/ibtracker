@@ -119,11 +119,17 @@ create trigger update_assignments_updated_at
 1. In your Supabase dashboard, go to **Authentication** → **Providers**
 2. Ensure **Email** provider is enabled (it should be by default)
 3. Go to **Authentication** → **URL Configuration**
-4. Add your site URL (for local development: `http://localhost:3000`)
-5. Add redirect URLs:
-   - `http://localhost:3000/auth/callback` (for local development)
-   - Add your production URL when deploying
+4. **Site URL**: Set this to your actual domain:
+   - For local development: `http://localhost:3000`
+   - For production: `https://yourdomain.com` (replace with your actual domain)
+5. **Redirect URLs**: Add these URLs (one per line):
+   - Local: `http://localhost:3000/auth/callback`
+   - Local: `http://localhost:3000/auth/reset-password`
+   - Production: `https://yourdomain.com/auth/callback`
+   - Production: `https://yourdomain.com/auth/reset-password`
 6. Configure email settings or use Supabase's default email service for development
+
+**Important**: The Site URL determines where Supabase sends users in password reset emails. Make sure to update this when you deploy to production!
 
 ## Step 4: Get Your Supabase Credentials
 
