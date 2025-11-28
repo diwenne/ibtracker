@@ -68,6 +68,7 @@ export default function Home() {
   const [isClient, setIsClient] = useState(false);
   const [isOnboarding, setIsOnboarding] = useState(true);
   const [showTrends, setShowTrends] = useState(false);
+  const [showAuth, setShowAuth] = useState(false);
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -94,6 +95,7 @@ export default function Home() {
       setSession(session);
       if (session) {
         loadSubjects();
+        setShowAuth(false);
       } else {
         setSubjects([]);
         setLoading(false);
@@ -114,6 +116,10 @@ export default function Home() {
   };
 
   const addSubject = async (name: string, type: SubjectType) => {
+    if (!session) {
+      setShowAuth(true);
+      return;
+    }
     const newSubject = await api.createSubject(name, type);
     if (newSubject) {
       setSubjects([...subjects, newSubject]);
@@ -200,8 +206,8 @@ export default function Home() {
 
   if (!isClient) return null;
 
-  if (!session) {
-    return <Auth onLogin={() => loadSubjects()} />;
+  if (showAuth) {
+    return <Auth onLogin={() => { setShowAuth(false); loadSubjects(); }} />;
   }
 
   if (loading) {
@@ -213,9 +219,16 @@ export default function Home() {
     return (
       <div className="min-h-screen bg-background text-foreground font-sans flex items-center justify-center p-4">
         <div className="max-w-md w-full space-y-8">
-          <div className="text-center space-y-2">
+          <div className="text-center space-y-2 relative">
             <h1 className="text-3xl font-bold">IB Grade Tracker</h1>
             <p className="text-muted-foreground">Set up your 6 subjects to get started</p>
+            {!session && (
+              <div className="absolute top-0 right-0 -mt-12 -mr-4">
+                <Button variant="ghost" onClick={() => setShowAuth(true)}>
+                  Sign In
+                </Button>
+              </div>
+            )}
           </div>
 
           <div className="space-y-3">
@@ -255,6 +268,14 @@ export default function Home() {
               );
             })}
           </div>
+
+          {!session && (
+            <div className="text-center">
+              <Button variant="link" onClick={() => setShowAuth(true)}>
+                Already have an account? Sign In
+              </Button>
+            </div>
+          )}
 
           {subjects.length === 6 && (
             <Button className="w-full" size="lg" onClick={() => setIsOnboarding(false)}>
