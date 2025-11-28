@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 
 export function AuthForm() {
   const [isLogin, setIsLogin] = useState(true)
+  const [isForgotPassword, setIsForgotPassword] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -23,7 +24,13 @@ export function AuthForm() {
     setMessage(null)
 
     try {
-      if (isLogin) {
+      if (isForgotPassword) {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/auth/reset-password`,
+        })
+        if (error) throw error
+        setMessage('Check your email for the password reset link!')
+      } else if (isLogin) {
         const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
@@ -48,7 +55,7 @@ export function AuthForm() {
     <div className="w-full max-w-md mx-auto p-6">
       <div className="bg-card border border-border rounded-lg p-8 shadow-sm">
         <h2 className="text-2xl font-bold mb-6 text-center">
-          {isLogin ? 'Login to IB Tracker' : 'Sign Up for IB Tracker'}
+          {isForgotPassword ? 'Reset Password' : isLogin ? 'Login to IB Tracker' : 'Sign Up for IB Tracker'}
         </h2>
 
         <form onSubmit={handleAuth} className="space-y-4">
@@ -65,19 +72,21 @@ export function AuthForm() {
             />
           </div>
 
-          <div>
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-              disabled={loading}
-              minLength={6}
-            />
-          </div>
+          {!isForgotPassword && (
+            <div>
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                disabled={loading}
+                minLength={6}
+              />
+            </div>
+          )}
 
           {error && (
             <div className="text-destructive text-sm bg-destructive/10 p-3 rounded">
@@ -92,24 +101,54 @@ export function AuthForm() {
           )}
 
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? 'Loading...' : isLogin ? 'Login' : 'Sign Up'}
+            {loading ? 'Loading...' : isForgotPassword ? 'Send Reset Link' : isLogin ? 'Login' : 'Sign Up'}
           </Button>
         </form>
 
-        <div className="mt-4 text-center">
-          <button
-            type="button"
-            onClick={() => {
-              setIsLogin(!isLogin)
-              setError(null)
-              setMessage(null)
-            }}
-            className="text-sm text-muted-foreground hover:text-foreground underline"
-          >
-            {isLogin
-              ? "Don't have an account? Sign up"
-              : 'Already have an account? Login'}
-          </button>
+        <div className="mt-4 text-center space-y-2">
+          {!isForgotPassword && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsLogin(!isLogin)
+                  setError(null)
+                  setMessage(null)
+                }}
+                className="text-sm text-muted-foreground hover:text-foreground underline block w-full"
+              >
+                {isLogin
+                  ? "Don't have an account? Sign up"
+                  : 'Already have an account? Login'}
+              </button>
+              {isLogin && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsForgotPassword(true)
+                    setError(null)
+                    setMessage(null)
+                  }}
+                  className="text-sm text-muted-foreground hover:text-foreground underline"
+                >
+                  Forgot password?
+                </button>
+              )}
+            </>
+          )}
+          {isForgotPassword && (
+            <button
+              type="button"
+              onClick={() => {
+                setIsForgotPassword(false)
+                setError(null)
+                setMessage(null)
+              }}
+              className="text-sm text-muted-foreground hover:text-foreground underline"
+            >
+              Back to login
+            </button>
+          )}
         </div>
       </div>
     </div>

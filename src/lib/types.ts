@@ -7,6 +7,7 @@ export interface Assignment {
     rawGrade?: string; // raw grade as fraction (e.g., "31/32")
     rawPercent?: number; // percentage (0-100)
     date: string;
+    notes?: string; // optional notes about the assignment
 }
 
 export interface Subject {

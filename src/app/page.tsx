@@ -612,6 +612,7 @@ function AddAssignmentDialog({ subject, onAdd }: { subject: Subject, onAdd: (sid
   const [ibGrade, setIbGrade] = useState("");
   const [rawGrade, setRawGrade] = useState("");
   const [rawPercent, setRawPercent] = useState("");
+  const [notes, setNotes] = useState("");
   const today = new Date();
   const [date, setDate] = useState(`${today.getMonth() + 1}/${today.getDate()}/${today.getFullYear()}`);
   const [dateError, setDateError] = useState("");
@@ -666,11 +667,17 @@ function AddAssignmentDialog({ subject, onAdd }: { subject: Subject, onAdd: (sid
       assignment.rawPercent = parseFloat(rawPercent);
     }
 
+    // Handle notes
+    if (notes) {
+      assignment.notes = notes;
+    }
+
     onAdd(subject.id, assignment);
     setName("");
     setIbGrade("");
     setRawGrade("");
     setRawPercent("");
+    setNotes("");
     const resetToday = new Date();
     setDate(`${resetToday.getMonth() + 1}/${resetToday.getDate()}/${resetToday.getFullYear()}`);
     setDateError("");
@@ -741,6 +748,11 @@ function AddAssignmentDialog({ subject, onAdd }: { subject: Subject, onAdd: (sid
             {dateError && <p className="text-sm text-red-500">{dateError}</p>}
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="notes" className="text-muted-foreground">Notes (optional)</Label>
+            <Input id="notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Add any notes about this assignment..." />
+          </div>
+
           <DialogFooter>
             <Button type="submit" disabled={!name || !ibGrade}>Add Assignment</Button>
           </DialogFooter>
@@ -767,6 +779,7 @@ function EditAssignmentDialog({
   const [ibGrade, setIbGrade] = useState(assignment.ibGrade?.toString() ?? "4");
   const [rawGrade, setRawGrade] = useState(assignment.rawGrade ?? "");
   const [rawPercent, setRawPercent] = useState(assignment.rawPercent?.toString() ?? "");
+  const [notes, setNotes] = useState(assignment.notes ?? "");
   const [date, setDate] = useState(formatDateForDisplay(assignment.date));
   const [dateError, setDateError] = useState("");
 
@@ -817,6 +830,11 @@ function EditAssignmentDialog({
     // Handle raw percent
     if (rawPercent) {
       updatedAssignment.rawPercent = parseFloat(rawPercent);
+    }
+
+    // Handle notes
+    if (notes) {
+      updatedAssignment.notes = notes;
     }
 
     onUpdate(updatedAssignment);
@@ -880,6 +898,11 @@ function EditAssignmentDialog({
               required
             />
             {dateError && <p className="text-sm text-red-500">{dateError}</p>}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="edit-notes" className="text-muted-foreground">Notes (optional)</Label>
+            <Input id="edit-notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Add any notes about this assignment..." />
           </div>
 
           <DialogFooter>
