@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Trash2, ChevronRight, TrendingUp, Home as HomeIcon } from "lucide-react";
+import { Plus, Trash2, ChevronRight, TrendingUp, Home as HomeIcon, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,6 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Subject, Assignment, SubjectType, calculatePercentage, getGrade, calculateRawPercent, percentToIBGrade, parseRawGrade, calculatePredictedGrade } from "@/lib/types";
+import { api } from "@/lib/api";
+import { createClient } from "@/lib/supabase";
+import Auth from "@/components/Auth";
 
 // Parse MM/DD/YYYY format to YYYY-MM-DD
 function parseDateInput(input: string): { valid: boolean; date: string; error?: string } {
@@ -65,123 +68,116 @@ export default function Home() {
   const [isClient, setIsClient] = useState(false);
   const [isOnboarding, setIsOnboarding] = useState(true);
   const [showTrends, setShowTrends] = useState(false);
+  const [session, setSession] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
-  // Load from local storage on mount
+  const supabase = createClient();
+
+  // Check auth and load data
   useEffect(() => {
     setIsClient(true);
-    const saved = localStorage.getItem("ib-grades");
-    if (saved) {
-      const loadedSubjects = JSON.parse(saved);
 
-      // Migrate old assignments to new format
-      const migratedSubjects = loadedSubjects.map((subject: Subject) => ({
-        ...subject,
-        assignments: subject.assignments.map((assignment: any) => {
-          // If assignment doesn't have ibGrade, calculate it from existing data
-          if (assignment.ibGrade === undefined) {
-            let calculatedGrade = 4; // Default grade
+    const init = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setSession(session);
 
-            // Try to calculate from rawPercent
-            if (assignment.rawPercent !== undefined) {
-              calculatedGrade = percentToIBGrade(assignment.rawPercent, subject.type);
-            }
-            // Try to calculate from score/total (old format)
-            else if (assignment.score !== undefined && assignment.total !== undefined) {
-              const percent = calculateRawPercent(assignment.score, assignment.total);
-              calculatedGrade = percentToIBGrade(percent, subject.type);
-              // Migrate to new rawGrade format
-              return {
-                id: assignment.id,
-                name: assignment.name,
-                ibGrade: calculatedGrade,
-                rawGrade: `${assignment.score}/${assignment.total}`,
-                rawPercent: percent,
-                date: assignment.date,
-              };
-            }
-
-            return {
-              ...assignment,
-              ibGrade: calculatedGrade,
-            };
-          }
-          return assignment;
-        }),
-      }));
-
-      setSubjects(migratedSubjects);
-      // Only show main page if we have exactly 6 subjects
-      if (migratedSubjects.length === 6) {
-        setIsOnboarding(false);
+      if (session) {
+        loadSubjects();
+      } else {
+        setLoading(false);
       }
-    }
+    };
+
+    init();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session) {
+        loadSubjects();
+      } else {
+        setSubjects([]);
+        setLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  // Save to local storage whenever subjects change
-  useEffect(() => {
-    if (isClient) {
-      localStorage.setItem("ib-grades", JSON.stringify(subjects));
-      // Auto-complete onboarding when 6 subjects are added
-      if (subjects.length === 6) {
-        setIsOnboarding(false);
-      }
+  const loadSubjects = async () => {
+    setLoading(true);
+    const data = await api.fetchSubjects();
+    setSubjects(data);
+    if (data.length === 6) {
+      setIsOnboarding(false);
     }
-  }, [subjects, isClient]);
-
-  const addSubject = (name: string, type: SubjectType) => {
-    const newSubject: Subject = {
-      id: Math.random().toString(36).substr(2, 9),
-      name,
-      type,
-      assignments: [],
-    };
-    setSubjects([...subjects, newSubject]);
+    setLoading(false);
   };
 
-  const addAssignment = (subjectId: string, assignment: Omit<Assignment, 'id'>) => {
-    setSubjects(subjects.map(sub => {
-      if (sub.id === subjectId) {
-        return {
-          ...sub,
-          assignments: [
-            ...sub.assignments,
-            {
-              ...assignment,
-              id: Math.random().toString(36).substr(2, 9),
-            }
-          ]
-        };
-      }
-      return sub;
-    }));
+  const addSubject = async (name: string, type: SubjectType) => {
+    const newSubject = await api.createSubject(name, type);
+    if (newSubject) {
+      setSubjects([...subjects, newSubject]);
+    }
   };
 
-  const updateAssignment = (subjectId: string, assignmentId: string, updatedAssignment: Omit<Assignment, 'id'>) => {
-    setSubjects(subjects.map(sub => {
-      if (sub.id === subjectId) {
-        return {
-          ...sub,
-          assignments: sub.assignments.map(a =>
-            a.id === assignmentId
-              ? { ...a, ...updatedAssignment }
-              : a
-          )
-        };
-      }
-      return sub;
-    }));
+  const updateSubject = async (id: string, name: string, type: SubjectType) => {
+    const updated = await api.updateSubject(id, name, type);
+    if (updated) {
+      setSubjects(subjects.map(sub =>
+        sub.id === id
+          ? { ...sub, name: updated.name, type: updated.type }
+          : sub
+      ));
+    }
   };
 
-  const deleteAssignment = (subjectId: string, assignmentId: string) => {
-    setSubjects(subjects.map(sub => {
-      if (sub.id === subjectId) {
-        return {
-          ...sub,
-          assignments: sub.assignments.filter(a => a.id !== assignmentId)
-        };
-      }
-      return sub;
-    }));
+  const addAssignment = async (subjectId: string, assignment: Omit<Assignment, 'id'>) => {
+    const newAssignment = await api.createAssignment(subjectId, assignment);
+    if (newAssignment) {
+      setSubjects(subjects.map(sub => {
+        if (sub.id === subjectId) {
+          return {
+            ...sub,
+            assignments: [newAssignment, ...sub.assignments].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+          };
+        }
+        return sub;
+      }));
+    }
+  };
+
+  const updateAssignment = async (subjectId: string, assignmentId: string, updatedAssignment: Omit<Assignment, 'id'>) => {
+    const updated = await api.updateAssignment(assignmentId, updatedAssignment);
+    if (updated) {
+      setSubjects(subjects.map(sub => {
+        if (sub.id === subjectId) {
+          return {
+            ...sub,
+            assignments: sub.assignments.map(a =>
+              a.id === assignmentId
+                ? updated
+                : a
+            ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+          };
+        }
+        return sub;
+      }));
+    }
+  };
+
+  const deleteAssignment = async (subjectId: string, assignmentId: string) => {
+    const success = await api.deleteAssignment(assignmentId);
+    if (success) {
+      setSubjects(subjects.map(sub => {
+        if (sub.id === subjectId) {
+          return {
+            ...sub,
+            assignments: sub.assignments.filter(a => a.id !== assignmentId)
+          };
+        }
+        return sub;
+      }));
+    }
   };
 
   // Calculate total predicted grade (out of 42)
@@ -203,6 +199,14 @@ export default function Home() {
   };
 
   if (!isClient) return null;
+
+  if (!session) {
+    return <Auth onLogin={() => loadSubjects()} />;
+  }
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  }
 
   // Onboarding view
   if (isOnboarding) {
@@ -232,8 +236,11 @@ export default function Home() {
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                        onClick={() => {
-                          setSubjects(subjects.filter(s => s.id !== subject.id));
+                        onClick={async () => {
+                          const success = await api.deleteSubject(subject.id);
+                          if (success) {
+                            setSubjects(subjects.filter(s => s.id !== subject.id));
+                          }
                         }}
                       >
                         <Trash2 className="h-4 w-4" />
@@ -271,11 +278,16 @@ export default function Home() {
       {/* Header */}
       <header className="bg-background border-b">
         <div className="container mx-auto px-6 py-6 flex items-center justify-between">
-          <h1 className="font-bold text-2xl tracking-tight text-foreground">IB Grade Tracker</h1>
-          <Button variant="outline" onClick={() => setShowTrends(true)}>
-            <TrendingUp className="mr-2 h-4 w-4" />
-            View Trends
-          </Button>
+          <h1 className="font-bold text-2xl tracking-tight text-foreground">IB Tracker</h1>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowTrends(true)}>
+              <TrendingUp className="mr-2 h-4 w-4" />
+              View Trends
+            </Button>
+            <Button variant="ghost" onClick={() => supabase.auth.signOut()}>
+              Sign Out
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -308,6 +320,7 @@ export default function Home() {
                   onAddAssignment={addAssignment}
                   onUpdateAssignment={updateAssignment}
                   onDeleteAssignment={deleteAssignment}
+                  onUpdateSubject={updateSubject}
                 />
               );
             })}
@@ -326,7 +339,7 @@ export default function Home() {
               rel="noopener noreferrer"
               className="hover:text-foreground transition-colors"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4" /><path d="M9 18c-4.51 2-5-2-7-2" /></svg>
             </a>
             <a
               href="https://twitter.com/diwenhuang"
@@ -334,7 +347,7 @@ export default function Home() {
               rel="noopener noreferrer"
               className="hover:text-foreground transition-colors"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z" /></svg>
             </a>
             <a
               href="https://linkedin.com/in/diwenhuang"
@@ -342,7 +355,7 @@ export default function Home() {
               rel="noopener noreferrer"
               className="hover:text-foreground transition-colors"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect width="4" height="12" x="2" y="9"/><circle cx="4" cy="4" r="2"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z" /><rect width="4" height="12" x="2" y="9" /><circle cx="4" cy="4" r="2" /></svg>
             </a>
           </div>
         </div>
@@ -357,7 +370,8 @@ function SubjectGradeCard({
   percentage,
   onAddAssignment,
   onUpdateAssignment,
-  onDeleteAssignment
+  onDeleteAssignment,
+  onUpdateSubject
 }: {
   subject: Subject;
   grade: number;
@@ -365,9 +379,11 @@ function SubjectGradeCard({
   onAddAssignment: (sid: string, assignment: Omit<Assignment, 'id'>) => void;
   onUpdateAssignment: (sid: string, aid: string, assignment: Omit<Assignment, 'id'>) => void;
   onDeleteAssignment: (sid: string, aid: string) => void;
+  onUpdateSubject: (id: string, name: string, type: SubjectType) => void;
 }) {
   const [showDetails, setShowDetails] = useState(false);
   const [editingAssignment, setEditingAssignment] = useState<Assignment | null>(null);
+  const [isEditingSubject, setIsEditingSubject] = useState(false);
 
   // Determine color based on grade quality
   const getGradeColor = (grade: number) => {
@@ -400,7 +416,19 @@ function SubjectGradeCard({
 
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{subject.name} ({subject.type})</DialogTitle>
+          <div className="flex items-center justify-between gap-4 pr-8">
+            <DialogTitle className="flex items-center gap-2">
+              {subject.name} ({subject.type})
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-muted-foreground hover:text-foreground border-none outline-none focus-visible:ring-0 ring-0"
+                onClick={() => setIsEditingSubject(true)}
+              >
+                <Pencil className="h-3 w-3" />
+              </Button>
+            </DialogTitle>
+          </div>
           <DialogDescription>
             {subject.assignments.length === 0 ? (
               'No assignments yet'
@@ -488,6 +516,13 @@ function SubjectGradeCard({
             />
           )}
         </div>
+
+        <EditSubjectDialog
+          subject={subject}
+          open={isEditingSubject}
+          onOpenChange={setIsEditingSubject}
+          onUpdate={onUpdateSubject}
+        />
       </DialogContent>
     </Dialog>
   );
@@ -869,7 +904,7 @@ function TrendsView({ subjects, onBack }: { subjects: Subject[], onBack: () => v
       {/* Header */}
       <header className="bg-background border-b">
         <div className="container mx-auto px-6 py-6 flex items-center justify-between">
-          <h1 className="font-bold text-2xl tracking-tight text-foreground">IB Grade Tracker</h1>
+          <h1 className="font-bold text-2xl tracking-tight text-foreground">IB Tracker</h1>
           <Button variant="outline" onClick={onBack}>
             <HomeIcon className="mr-2 h-4 w-4" />
             Back to Dashboard
@@ -961,7 +996,7 @@ function TrendsView({ subjects, onBack }: { subjects: Subject[], onBack: () => v
               rel="noopener noreferrer"
               className="hover:text-foreground transition-colors"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4" /><path d="M9 18c-4.51 2-5-2-7-2" /></svg>
             </a>
             <a
               href="https://twitter.com/diwenhuang"
@@ -969,7 +1004,7 @@ function TrendsView({ subjects, onBack }: { subjects: Subject[], onBack: () => v
               rel="noopener noreferrer"
               className="hover:text-foreground transition-colors"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z" /></svg>
             </a>
             <a
               href="https://linkedin.com/in/diwenhuang"
@@ -977,7 +1012,7 @@ function TrendsView({ subjects, onBack }: { subjects: Subject[], onBack: () => v
               rel="noopener noreferrer"
               className="hover:text-foreground transition-colors"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect width="4" height="12" x="2" y="9"/><circle cx="4" cy="4" r="2"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z" /><rect width="4" height="12" x="2" y="9" /><circle cx="4" cy="4" r="2" /></svg>
             </a>
           </div>
         </div>
@@ -1004,10 +1039,10 @@ function calculateTrendData(subjects: Subject[]) {
   );
 
   // For each unique date, calculate the predicted grade at that point in time
-  const trendData: Array<{date: string, predictedGrade: number, subjectGrades: {[key: string]: number}}> = [];
+  const trendData: Array<{ date: string, predictedGrade: number, subjectGrades: { [key: string]: number } }> = [];
 
   uniqueDates.forEach(currentDate => {
-    const subjectGrades: {[key: string]: number} = {};
+    const subjectGrades: { [key: string]: number } = {};
     let totalGrade = 0;
     let subjectsWithGrades = 0;
 
@@ -1054,7 +1089,7 @@ function CombinedTrendChart({
   visibleSubjects: Set<string>;
   getSubjectColor: (index: number) => string;
 }) {
-  const [hoveredPoint, setHoveredPoint] = useState<{x: number, y: number, value: number, label: string} | null>(null);
+  const [hoveredDataIndex, setHoveredDataIndex] = useState<number | null>(null);
 
   if (data.length === 0) {
     return <p className="text-center text-muted-foreground py-8">No data available</p>;
@@ -1127,12 +1162,12 @@ function CombinedTrendChart({
   }).join(' ') : '';
 
   // Generate paths for each subject
-  const subjectPaths: Array<{name: string, points: Array<{x: number, y: number, dataIndex: number}>, color: string}> = [];
+  const subjectPaths: Array<{ name: string, points: Array<{ x: number, y: number, dataIndex: number }>, color: string }> = [];
   subjects.forEach((subject, subjectIndex) => {
     if (!visibleSubjects.has(subject.name)) return;
 
     // Get all data points where this subject has a grade
-    const points: Array<{x: number, y: number, dataIndex: number}> = [];
+    const points: Array<{ x: number, y: number, dataIndex: number }> = [];
     data.forEach((point, dataIndex) => {
       if (point.subjectGrades[subject.name] !== undefined) {
         points.push({
@@ -1154,19 +1189,51 @@ function CombinedTrendChart({
 
   return (
     <div className="w-full flex justify-center relative">
-      {hoveredPoint && (
-        <div
-          className="absolute bg-foreground text-background px-2 py-1 rounded text-xs font-medium pointer-events-none z-10"
-          style={{
-            left: `${(hoveredPoint.x / chartWidth) * 100}%`,
-            top: `${(hoveredPoint.y / chartHeight) * 100}%`,
-            transform: 'translate(-50%, -120%)',
-          }}
-        >
-          {hoveredPoint.label}: {hoveredPoint.value}
-        </div>
-      )}
-      <svg width={chartWidth} height={chartHeight} className="max-w-full"  viewBox={`0 0 ${chartWidth} ${chartHeight}`} preserveAspectRatio="xMidYMid meet">
+      {hoveredDataIndex !== null && (() => {
+        const dataPoint = data[hoveredDataIndex];
+        const hoveredItems: Array<{ label: string, value: number, color: string }> = [];
+
+        // Collect all values at this data point
+        if (showPredicted && dataPoint.predictedGrade > 0) {
+          hoveredItems.push({ label: 'Predicted Total', value: dataPoint.predictedGrade, color: '#6366f1' });
+        }
+
+        subjects.forEach((subject, subjectIndex) => {
+          if (visibleSubjects.has(subject.name) && dataPoint.subjectGrades[subject.name] !== undefined) {
+            hoveredItems.push({
+              label: subject.name,
+              value: dataPoint.subjectGrades[subject.name],
+              color: getSubjectColor(subjectIndex)
+            });
+          }
+        });
+
+        if (hoveredItems.length === 0) return null;
+
+        const x = xScale(hoveredDataIndex);
+
+        return (
+          <div
+            className="absolute bg-foreground text-background px-2 py-1 rounded text-xs font-medium pointer-events-none z-10 space-y-1"
+            style={{
+              left: `${(x / chartWidth) * 100}%`,
+              top: '10%',
+              transform: 'translateX(-50%)',
+            }}
+          >
+            <div className="font-semibold border-b border-background/20 pb-1 mb-1">
+              {formatDateForDisplay(dataPoint.date)}
+            </div>
+            {hoveredItems.map((item, idx) => (
+              <div key={idx} className="flex items-center gap-2 whitespace-nowrap">
+                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
+                <span>{item.label}: {item.value}</span>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+      <svg width={chartWidth} height={chartHeight} className="max-w-full" viewBox={`0 0 ${chartWidth} ${chartHeight}`} preserveAspectRatio="xMidYMid meet">
 
         {/* Y-axis labels */}
         {showYAxis && (() => {
@@ -1241,7 +1308,6 @@ function CombinedTrendChart({
               )}
               {/* Points */}
               {subjectPath.points.map((point, index) => {
-                const gradeValue = data[point.dataIndex].subjectGrades[subjectPath.name];
                 return (
                   <circle
                     key={index}
@@ -1250,8 +1316,8 @@ function CombinedTrendChart({
                     r="3"
                     fill={subjectPath.color}
                     style={{ cursor: 'pointer' }}
-                    onMouseEnter={() => setHoveredPoint({ x: point.x, y: point.y, value: gradeValue, label: subjectPath.name })}
-                    onMouseLeave={() => setHoveredPoint(null)}
+                    onMouseEnter={() => setHoveredDataIndex(point.dataIndex)}
+                    onMouseLeave={() => setHoveredDataIndex(null)}
                   />
                 );
               })}
@@ -1281,72 +1347,81 @@ function CombinedTrendChart({
                 r="3.5"
                 fill="#6366f1"
                 style={{ cursor: 'pointer' }}
-                onMouseEnter={() => setHoveredPoint({ x: point.x, y: point.y, value: point.value, label: 'Predicted Total' })}
-                onMouseLeave={() => setHoveredPoint(null)}
+                onMouseEnter={() => setHoveredDataIndex(point.index)}
+                onMouseLeave={() => setHoveredDataIndex(null)}
               />
             ))}
           </g>
         )}
       </svg>
-
-      {/* Labels at the end of each trend line */}
-      <div className="absolute inset-0 pointer-events-none z-20">
-        {(() => {
-          // Collect all end points with their labels and colors
-          const endPoints: Array<{x: number, y: number, label: string, color: string}> = [];
-
-          subjectPaths.forEach((subjectPath) => {
-            if (subjectPath.points.length === 0) return;
-            const lastPoint = subjectPath.points[subjectPath.points.length - 1];
-            endPoints.push({ x: lastPoint.x, y: lastPoint.y, label: subjectPath.name, color: subjectPath.color });
-          });
-
-          if (showPredicted && predictedPoints.length > 0) {
-            const lastPoint = predictedPoints[predictedPoints.length - 1];
-            endPoints.push({ x: lastPoint.x, y: lastPoint.y, label: 'Predicted Total', color: '#6366f1' });
-          }
-
-          // Sort by y position to stack them
-          endPoints.sort((a, b) => a.y - b.y);
-
-          // Group points that are close together (within 25px vertically)
-          const groups: Array<Array<{x: number, y: number, label: string, color: string}>> = [];
-          endPoints.forEach(point => {
-            let addedToGroup = false;
-            for (const group of groups) {
-              const lastInGroup = group[group.length - 1];
-              if (Math.abs(point.y - lastInGroup.y) < 25) {
-                group.push(point);
-                addedToGroup = true;
-                break;
-              }
-            }
-            if (!addedToGroup) {
-              groups.push([point]);
-            }
-          });
-
-          // Render each group, stacking labels vertically
-          return groups.flatMap(group =>
-            group.map((point, index) => (
-              <div
-                key={point.label}
-                className="absolute"
-                style={{
-                  left: `${(point.x / chartWidth) * 100}%`,
-                  top: `${(point.y / chartHeight) * 100}%`,
-                  transform: `translate(2px, calc(-50% + ${index * 18}px))`,
-                }}
-              >
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-background text-muted-foreground border-muted-foreground/30 whitespace-nowrap flex items-center gap-1">
-                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: point.color }} />
-                  {point.label}
-                </Badge>
-              </div>
-            ))
-          );
-        })()}
-      </div>
     </div>
+  );
+}
+
+function EditSubjectDialog({
+  subject,
+  open,
+  onOpenChange,
+  onUpdate
+}: {
+  subject: Subject;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onUpdate: (id: string, name: string, type: SubjectType) => void;
+}) {
+  const [name, setName] = useState(subject.name);
+  const [type, setType] = useState<SubjectType>(subject.type);
+
+  // Reset state when dialog opens
+  useEffect(() => {
+    if (open) {
+      setName(subject.name);
+      setType(subject.type);
+    }
+  }, [open, subject]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (name) {
+      onUpdate(subject.id, name, type);
+      onOpenChange(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit Subject</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4 pt-4">
+          <div className="space-y-2">
+            <Label htmlFor="edit-subject-name">Subject Name</Label>
+            <Input
+              id="edit-subject-name"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="e.g. Math AA"
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="edit-subject-type">Level</Label>
+            <Select value={type} onValueChange={(v) => setType(v as SubjectType)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="HL">Higher Level (HL)</SelectItem>
+                <SelectItem value="SL">Standard Level (SL)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button type="submit">Save Changes</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
