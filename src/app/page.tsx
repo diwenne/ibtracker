@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Plus, Trash2, ChevronRight, TrendingUp, Home as HomeIcon, Pencil } from "lucide-react";
+import { Plus, Trash2, ChevronRight, TrendingUp, Home as HomeIcon, Pencil, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Subject, Assessment, SubjectType, calculatePercentage, getGrade, calculateRawPercent, percentToIBGrade, parseRawGrade, calculatePredictedGrade } from "@/lib/types";
 import { api } from "@/lib/api";
 import { createClient } from "@/lib/supabase";
@@ -67,6 +68,7 @@ export default function Home() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [isClient, setIsClient] = useState(false);
   const [showTrends, setShowTrends] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const initialLoadComplete = useRef(false);
@@ -262,6 +264,11 @@ export default function Home() {
     return <TrendsView key={JSON.stringify(subjects)} subjects={subjects} onBack={() => setShowTrends(false)} />;
   }
 
+  // Help view
+  if (showHelp) {
+    return <HelpView onBack={() => setShowHelp(false)} />;
+  }
+
   // Onboarding view - show if no subjects
   if (subjects.length === 0) {
     return (
@@ -326,7 +333,12 @@ export default function Home() {
       {/* Header */}
       <header className="bg-background border-b">
         <div className="container mx-auto px-6 py-6 flex items-center justify-between">
-          <h1 className="font-bold text-2xl tracking-tight text-foreground">IB Tracker</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="font-bold text-2xl tracking-tight text-foreground">IB Tracker</h1>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setShowHelp(true)}>
+              <Info className="h-4 w-4" />
+            </Button>
+          </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setShowTrends(true)}>
               <TrendingUp className="mr-2 h-4 w-4" />
@@ -938,6 +950,256 @@ function EditAssessmentDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function HelpView({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="min-h-screen bg-background text-foreground font-sans flex flex-col">
+      {/* Header */}
+      <header className="bg-background border-b">
+        <div className="container mx-auto px-6 py-6 flex items-center justify-between">
+          <h1 className="font-bold text-2xl tracking-tight text-foreground">Help & Information</h1>
+          <Button variant="outline" onClick={onBack}>
+            <HomeIcon className="mr-2 h-4 w-4" />
+            Back to Dashboard
+          </Button>
+        </div>
+      </header>
+
+      <main className="container mx-auto px-6 py-8 max-w-4xl">
+        <div className="space-y-6">
+          <div>
+            <h2 className="text-xl font-semibold mb-4">Welcome to IB Tracker</h2>
+            <p className="text-muted-foreground">
+              Track your IB assessments and predict your final grades across all 6 subjects. Click on each section below to learn more.
+            </p>
+          </div>
+
+          <Accordion type="multiple" className="w-full">
+            <AccordionItem value="how-to-use">
+              <AccordionTrigger className="text-lg font-semibold">How to Use</AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-3 text-muted-foreground">
+                  <p>Getting started with IB Tracker is simple:</p>
+                  <ol className="list-decimal list-inside space-y-2">
+                    <li>Add your 6 IB subjects (3 Higher Level and 3 Standard Level)</li>
+                    <li>For each subject, add your assessments with their IB grades (1-7)</li>
+                    <li>Optionally include raw grades and percentages for more detailed tracking</li>
+                    <li>Track your predicted total out of 42 points on the dashboard</li>
+                    <li>Click "View Trends" to see how your grades change over time</li>
+                    <li>Edit or delete assessments by clicking on them in the subject cards</li>
+                  </ol>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="ib-grading">
+              <AccordionTrigger className="text-lg font-semibold">IB Grading System</AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-3">
+                  <p className="text-muted-foreground">
+                    Each IB subject is graded on a scale of 1-7, where:
+                  </p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-3">
+                        <span className="font-bold text-green-600 text-lg w-8">7</span>
+                        <span className="text-muted-foreground">Excellent</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="font-bold text-lime-600 text-lg w-8">6</span>
+                        <span className="text-muted-foreground">Very Good</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="font-bold text-yellow-600 text-lg w-8">5</span>
+                        <span className="text-muted-foreground">Good</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="font-bold text-orange-600 text-lg w-8">4</span>
+                        <span className="text-muted-foreground">Satisfactory</span>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-3">
+                        <span className="font-bold text-red-600 text-lg w-8">3</span>
+                        <span className="text-muted-foreground">Mediocre</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="font-bold text-red-700 text-lg w-8">2</span>
+                        <span className="text-muted-foreground">Poor</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="font-bold text-red-800 text-lg w-8">1</span>
+                        <span className="text-muted-foreground">Very Poor</span>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-muted-foreground text-sm mt-4">
+                    Your total IB score is out of 42 points (6 subjects × 7 points each). Most universities require 24+ points to pass.
+                  </p>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="hl-boundaries">
+              <AccordionTrigger className="text-lg font-semibold">Grade Boundaries - Higher Level (HL)</AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-3">
+                  <p className="text-muted-foreground">
+                    Higher Level subjects typically use these percentage ranges to determine IB grades:
+                  </p>
+                  <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold">Grade 7</span>
+                      <span className="text-muted-foreground">80% and above</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold">Grade 6</span>
+                      <span className="text-muted-foreground">70% - 79%</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold">Grade 5</span>
+                      <span className="text-muted-foreground">60% - 69%</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold">Grade 4</span>
+                      <span className="text-muted-foreground">50% - 59%</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold">Grade 3</span>
+                      <span className="text-muted-foreground">40% - 49%</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold">Grade 2</span>
+                      <span className="text-muted-foreground">30% - 39%</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold">Grade 1</span>
+                      <span className="text-muted-foreground">0% - 29%</span>
+                    </div>
+                  </div>
+                  <p className="text-muted-foreground text-sm">
+                    Note: These are general boundaries. Actual boundaries may vary slightly by subject and exam session.
+                  </p>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="sl-boundaries">
+              <AccordionTrigger className="text-lg font-semibold">Grade Boundaries - Standard Level (SL)</AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-3">
+                  <p className="text-muted-foreground">
+                    Standard Level subjects typically use these percentage ranges to determine IB grades:
+                  </p>
+                  <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold">Grade 7</span>
+                      <span className="text-muted-foreground">75% and above</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold">Grade 6</span>
+                      <span className="text-muted-foreground">65% - 74%</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold">Grade 5</span>
+                      <span className="text-muted-foreground">55% - 64%</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold">Grade 4</span>
+                      <span className="text-muted-foreground">45% - 54%</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold">Grade 3</span>
+                      <span className="text-muted-foreground">35% - 44%</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold">Grade 2</span>
+                      <span className="text-muted-foreground">25% - 34%</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold">Grade 1</span>
+                      <span className="text-muted-foreground">0% - 24%</span>
+                    </div>
+                  </div>
+                  <p className="text-muted-foreground text-sm">
+                    Note: SL subjects generally have slightly lower grade boundaries than HL subjects. Actual boundaries may vary by subject and exam session.
+                  </p>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="predicted-grade">
+              <AccordionTrigger className="text-lg font-semibold">How Predicted Grades Work</AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-3 text-muted-foreground">
+                  <p>
+                    IB Tracker calculates your predicted grade for each subject based on your assessment history:
+                  </p>
+                  <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+                    <div>
+                      <h4 className="font-semibold text-foreground mb-2">Subject Predicted Grade</h4>
+                      <p className="text-sm">
+                        The average of all IB grades you've entered for that subject, rounded to the nearest whole number (1-7).
+                      </p>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-foreground mb-2">Total Predicted Score</h4>
+                      <p className="text-sm">
+                        The sum of all 6 subject predicted grades, displayed on your dashboard as a number out of 42.
+                      </p>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-foreground mb-2">Percentage Display</h4>
+                      <p className="text-sm">
+                        The percentage shown for each subject is calculated from your raw grades or percentages, using the appropriate grade boundaries for HL or SL.
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-sm">
+                    💡 Tip: Add more assessments over time to get a more accurate prediction of your final IB grade!
+                  </p>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="raw-grades">
+              <AccordionTrigger className="text-lg font-semibold">Raw Grades & Percentages</AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-3 text-muted-foreground">
+                  <p>
+                    When adding assessments, you have two optional fields:
+                  </p>
+                  <div className="space-y-4">
+                    <div>
+                      <h4 className="font-semibold text-foreground mb-1">Raw Grade</h4>
+                      <p className="text-sm">
+                        Enter your actual score in the format "score/total" (e.g., "45/50"). This helps you track your raw performance.
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        For SL subjects, this automatically calculates a percentage for grade prediction.
+                      </p>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-foreground mb-1">Raw Percent</h4>
+                      <p className="text-sm">
+                        Enter the percentage score directly (e.g., "85.5"). This is especially useful for HL subjects where raw scores need to be scaled before converting to percentages.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mt-4">
+                    <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                      Note: The IB grade (1-7) is always required. Raw grades and percentages are optional but help provide more detailed tracking.
+                    </p>
+                  </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        </div>
+      </main>
+    </div>
   );
 }
 
