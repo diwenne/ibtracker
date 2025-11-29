@@ -67,6 +67,57 @@ export async function POST(request: Request) {
             weight: c.raw_weight
         })) || [];
 
+        // Create subject-specific prompt based on HL vs SL
+        const isHL = subject.type === "HL";
+
+        const userPrompt = isHL
+            ? `Predict the final IB grade (1-7) for the HL (Higher Level) subject "${subject.name}".
+
+Assessment data: ${JSON.stringify(assessmentData)}
+Category weightings: ${JSON.stringify(categoryData)}
+
+HL-SPECIFIC RULES (TREND-FOCUSED):
+1. PRIMARY FOCUS: Look for improvement trends and consistency in recent assessments
+   - Recent IB grades (6s and 7s) are strong indicators, especially if showing improvement
+   - A student improving from 4→5→6 is likely to score 6 or higher
+   - Consistent 6s and 7s in recent high-weight assessments (Exams, IAs) strongly predict a final 6-7
+2. WEIGHTING: Assessments with higher weights (Exams, IAs) influence the prediction MORE than quizzes
+   - Recent high-weight assessments carry the most influence
+3. PERCENTAGES: Raw percentages are LESS meaningful for HL due to heavy teacher scaling/curves
+   - Focus on the IB grade trend, not the raw percentage
+4. NOTES: If notes mention "bad day", "sick", or external factors, discount that assessment slightly
+5. TIME DECAY: Older assessments matter less than recent performance
+
+Output strictly in this JSON format:
+{
+  "predictedGrade": number,
+  "explanation": "string (max 2 sentences explaining the trend or consistency observed)"
+}`
+            : `Predict the final IB grade (1-7) for the SL (Standard Level) subject "${subject.name}".
+
+Assessment data: ${JSON.stringify(assessmentData)}
+Category weightings: ${JSON.stringify(categoryData)}
+
+SL-SPECIFIC RULES (AVERAGE-FOCUSED):
+1. PRIMARY FOCUS: Calculate weighted average of raw percentages
+   - Convert weighted average percentage to IB grade band using SL boundaries:
+     * 96-100% = 7, 90-95% = 6, 86-89% = 5, 76-85% = 4, 70-75% = 3, 50-69% = 2, 0-49% = 1
+   - This weighted average is the PRIMARY predictor
+2. WEIGHTING: Respect category weights strictly
+   - Higher weight categories (Exams, IAs) contribute more to the weighted average
+3. TREND (MINOR): Only make SMALL adjustments for trends
+   - If a student is clearly improving, you may bump up by 1 grade maximum
+   - If declining, you may lower by 1 grade maximum
+   - Most of the time, stick to the weighted average
+4. NOTES: If notes mention "bad day", "sick", or external factors, discount that assessment slightly
+5. PERCENTAGES ARE KEY: Unlike HL, percentages directly map to IB grades for SL
+
+Output strictly in this JSON format:
+{
+  "predictedGrade": number,
+  "explanation": "string (max 2 sentences explaining the weighted average and any minor trend adjustments)"
+}`;
+
         const completion = await openai.chat.completions.create({
             model: "gpt-3.5-turbo",
             messages: [
@@ -76,28 +127,7 @@ export async function POST(request: Request) {
                 },
                 {
                     role: "user",
-                    content: `Predict the final IB grade (1-7) for the subject "${subject.name}" (${subject.type}).
-
-Assessment data: ${JSON.stringify(assessmentData)}
-Category weightings: ${JSON.stringify(categoryData)}
-
-Rules:
-1. HL vs SL:
-   - For HL (Higher Level) subjects, prioritize the trend of IB Grades (1-7). Improvement over time is key. Use the "scaling" logic where high percentages (90%+) are required for a 7, but consistent 6s and 7s in recent assessments are a strong indicator.
-   - For SL (Standard Level) subjects, prioritize the weighted average of percentages if available. If not, use the weighted average of IB grades.
-2. Weighting:
-   - Respect the category weights. Assessments in categories with higher weights (e.g., "Exams", "IAs") contribute more to the final grade.
-   - If no categories are defined, treat all assessments equally or prioritize recent ones.
-3. Notes:
-   - Pay attention to "notes". If a student had a bad day or a specific reason for a low grade, discount it slightly.
-4. Trend:
-   - Recent performance is more indicative of the final grade than performance from months ago.
-
-Output strictly in this JSON format:
-{
-  "predictedGrade": number,
-  "explanation": "string (max 2 sentences)"
-}`
+                    content: userPrompt
                 }
             ],
             response_format: { type: "json_object" },

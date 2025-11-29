@@ -1365,17 +1365,42 @@ function HelpView({ onBack }: { onBack: () => void }) {
                     <div>
                       <h4 className="font-semibold text-foreground mb-1">3️⃣ AI-Enhanced Predictions (OpenAI GPT-3.5-turbo)</h4>
                       <p className="text-sm mb-2">
-                        AI analyzes your assessment data like an experienced IB teacher would, considering:
+                        <strong>HL and SL subjects use completely different AI prediction strategies</strong> to match how IB teachers actually grade each level:
                       </p>
-                      <ul className="list-disc list-inside text-sm ml-2 space-y-1">
-                        <li><strong>Weighted Performance:</strong> Categories with higher weights contribute more to the final grade</li>
-                        <li><strong>Improvement Trends:</strong> Recent performance is more indicative than old results</li>
-                        <li><strong>Contextual Notes:</strong> If you note "bad day" or illness, the AI may discount that assessment slightly</li>
-                        <li><strong>HL Scaling:</strong> For HL, AI focuses on IB grade trends; percentages matter less due to heavy teacher curves</li>
-                        <li><strong>SL Percentages:</strong> For SL, AI anchors on weighted average percentage, then fine-tunes based on trends</li>
-                      </ul>
-                      <p className="text-xs mt-2 text-muted-foreground italic">
-                        The AI receives a compact prompt with all assessments (name, date, IB grade, raw %, category, weight, notes) and outputs a predicted grade (1-7) with a brief explanation.
+                      <div className="space-y-3">
+                        <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                          <p className="font-semibold text-blue-900 dark:text-blue-100 text-sm mb-1">HL Predictions (Trend-Focused Strategy)</p>
+                          <ul className="list-disc list-inside text-xs text-blue-800 dark:text-blue-200 space-y-1 ml-2">
+                            <li><strong>PRIMARY FOCUS:</strong> Improvement trends and consistency in recent assessments</li>
+                            <li>A student improving from 4→5→6 is likely to score 6 or higher on finals</li>
+                            <li>Consistent 6s and 7s in recent high-weight assessments (Exams, IAs) strongly predict final 6-7</li>
+                            <li>Raw percentages are largely <strong>ignored</strong> due to heavy HL scaling/curves</li>
+                            <li>Recent performance matters MORE than old assessments (time decay)</li>
+                            <li>Example: Even if early quizzes were 4s, recent exam 6s and IA 7 predict final grade 6-7</li>
+                          </ul>
+                        </div>
+                        <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg p-3">
+                          <p className="font-semibold text-green-900 dark:text-green-100 text-sm mb-1">SL Predictions (Average-Focused Strategy)</p>
+                          <ul className="list-disc list-inside text-xs text-green-800 dark:text-green-200 space-y-1 ml-2">
+                            <li><strong>PRIMARY FOCUS:</strong> Weighted average of raw percentages</li>
+                            <li>AI calculates weighted avg % and converts to IB grade using SL boundaries (96-100%=7, 90-95%=6, etc.)</li>
+                            <li>This weighted average is the <strong>main predictor</strong> (not trends!)</li>
+                            <li>Trends only make <strong>small adjustments</strong> (max ±1 grade)</li>
+                            <li>Percentages directly map to IB grades for SL (no heavy curve like HL)</li>
+                            <li>Example: Weighted avg of 91% predicts grade 6, even if trend is slightly down</li>
+                          </ul>
+                        </div>
+                        <div className="text-xs mt-2 space-y-1">
+                          <p className="font-medium text-foreground">Both strategies consider:</p>
+                          <ul className="list-disc list-inside ml-2 text-muted-foreground">
+                            <li><strong>Category Weights:</strong> Exams/IAs influence predictions more than quizzes</li>
+                            <li><strong>Contextual Notes:</strong> "Bad day" or illness notes reduce that assessment's impact</li>
+                            <li><strong>Recency:</strong> Recent assessments carry more weight (especially for HL)</li>
+                          </ul>
+                        </div>
+                      </div>
+                      <p className="text-xs mt-3 text-muted-foreground italic">
+                        The AI receives separate, specialized prompts for HL vs SL with different rules and priorities, ensuring predictions match how IB teachers grade each level.
                       </p>
                     </div>
                     <div>
