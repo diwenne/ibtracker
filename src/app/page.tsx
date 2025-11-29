@@ -311,7 +311,11 @@ export default function Home() {
   // Calculate total predicted grade (out of 42)
   const totalPredicted = subjects.reduce((total, subject) => {
     if (subject.assessments.length === 0) return total; // Skip subjects with no assessments
-    const grade = calculatePredictedGrade(subject.assessments);
+
+    // Use AI predicted grade if available, otherwise fall back to local calculation
+    const localPrediction = calculateLocalPrediction(subject, subject.assessments, subject.categories || []);
+    const grade = subject.aiPredictedGrade || localPrediction?.grade || calculatePredictedGrade(subject.assessments);
+
     return total + grade;
   }, 0);
 

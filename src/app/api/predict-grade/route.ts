@@ -98,9 +98,14 @@ HL-SPECIFIC RULES (STRICT CONSERVATIVE APPROACH):
    - Recent high-weight assessments (Exams, IAs) matter most
    - But still constrained by the weighted average ±1 rule
 
-5. NOTES & DISCOUNTING:
-   - "Bad day" notes: slightly reduce weight of that assessment
-   - But do NOT use this as excuse to inflate predictions
+5. NOTES ARE CRITICAL - READ CAREFULLY:
+   - NOTES field contains important context that MUST significantly affect weight
+   - If notes say "worth VERY little" or "doesn't count" → reduce that assessment's weight by 50-90%
+   - If notes say "bad day", "sick", "unfair" → reduce weight by 30-50%
+   - If notes say "extra important", "final", "cumulative" → increase weight by 20-30%
+   - If notes say "practice only" or "mock" → reduce weight by 40-60%
+   - Empty notes = use normal weight
+   - NEVER ignore notes - they directly modify how much an assessment should count
 
 6. STRICT BOUNDARIES:
    - Weighted avg 6.3 with max grade 6 → predict 6 (NOT 7)
@@ -146,9 +151,14 @@ SL-SPECIFIC RULES (STRICT MATHEMATICAL APPROACH):
    - Higher weight categories (Exams, IAs) dominate the weighted average
    - A single high-weight exam at 88% outweighs 5 quizzes at 95%
 
-6. NOTES:
-   - "Bad day" notes: slightly reduce that assessment's contribution
-   - But do NOT inflate final prediction beyond weighted average ±1
+6. NOTES ARE CRITICAL - READ CAREFULLY:
+   - NOTES field contains important context that MUST significantly affect weight
+   - If notes say "worth VERY little" or "doesn't count" → reduce that assessment's weight by 50-90%
+   - If notes say "bad day", "sick", "unfair" → reduce weight by 30-50%
+   - If notes say "extra important", "final", "cumulative" → increase weight by 20-30%
+   - If notes say "practice only" or "mock" → reduce weight by 40-60%
+   - Empty notes = use normal weight
+   - NEVER ignore notes - they directly modify how much an assessment should count
 
 7. FINAL CHECK:
    - Does prediction match weighted_avg_pct conversion? If not, explain why
