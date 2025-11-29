@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Plus, Trash2, ChevronRight, TrendingUp, Home as HomeIcon, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,66 +66,110 @@ function formatDateForDisplay(isoDate: string): string {
 export default function Home() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [isClient, setIsClient] = useState(false);
-  const [isOnboarding, setIsOnboarding] = useState(true);
   const [showTrends, setShowTrends] = useState(false);
   const [session, setSession] = useState<any>(null);
-  const [loading, setLoading] = useState(false); // Start with false to avoid flash
+  const [loading, setLoading] = useState(true);
+  const initialLoadComplete = useRef(false);
 
   const supabase = createClient();
 
+  const loadSubjects = async () => {
+    console.log('loadSubjects: Starting...');
+    try {
+      const data = await api.fetchSubjects(supabase);
+      console.log('loadSubjects: Got data:', data);
+      setSubjects(data);
+    } catch (error) {
+      console.error('loadSubjects: Error:', error);
+    } finally {
+      console.log('loadSubjects: Setting loading to false');
+      setLoading(false);
+    }
+  };
+
   // Check auth and load data
   useEffect(() => {
+    console.log('useEffect: Starting');
     setIsClient(true);
-    setLoading(true); // Set loading here instead
+
+    let mounted = true;
 
     const init = async () => {
+      console.log('init: Getting session...');
       const { data: { session } } = await supabase.auth.getSession();
+      console.log('init: Session:', session ? 'exists' : 'null');
+
+      if (!mounted) return;
+
       setSession(session);
 
       if (session) {
-        loadSubjects();
+        console.log('init: Loading subjects...');
+        await loadSubjects();
       } else {
+        console.log('init: No session, setting loading to false');
         setLoading(false);
       }
+      initialLoadComplete.current = true;
     };
 
     init();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session) {
-        loadSubjects();
-      } else {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      console.log('onAuthStateChange: Event:', _event, 'Session:', session ? 'exists' : 'null');
+
+      if (!mounted) return;
+
+      // INITIAL_SESSION fires during app load - skip it since init() handles initial load
+      if (_event === 'INITIAL_SESSION') {
+        console.log('onAuthStateChange: Skipping INITIAL_SESSION (handled by init)');
+        return;
+      }
+
+      // Skip SIGNED_IN events that fire during initial load (before init completes)
+      if (_event === 'SIGNED_IN' && !initialLoadComplete.current) {
+        console.log('onAuthStateChange: Skipping SIGNED_IN during initial load');
+        return;
+      }
+
+      // Only reload subjects on actual sign-in events after initial load
+      if (_event === 'SIGNED_IN') {
+        // Check if we already have this session to avoid double load
+        setSession((prevSession: any) => {
+          if (prevSession?.user?.id === session?.user?.id) {
+            console.log('onAuthStateChange: Session ID match, skipping reload');
+            return prevSession;
+          }
+          // New session, reload
+          setLoading(true);
+          loadSubjects();
+          return session;
+        });
+      } else if (_event === 'SIGNED_OUT') {
+        setSession(null);
         setSubjects([]);
         setLoading(false);
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
-
-  const loadSubjects = async () => {
-    setLoading(true);
-    const data = await api.fetchSubjects();
-    setSubjects(data);
-    if (data.length === 6) {
-      setIsOnboarding(false);
-    }
-    setLoading(false);
-  };
 
   const addSubject = async (name: string, type: SubjectType) => {
     if (!session) {
       return;
     }
-    const newSubject = await api.createSubject(name, type);
+    const newSubject = await api.createSubject(name, type, supabase);
     if (newSubject) {
       setSubjects([...subjects, newSubject]);
     }
   };
 
   const updateSubject = async (id: string, name: string, type: SubjectType) => {
-    const updated = await api.updateSubject(id, name, type);
+    const updated = await api.updateSubject(id, name, type, supabase);
     if (updated) {
       setSubjects(subjects.map(sub =>
         sub.id === id
@@ -136,7 +180,7 @@ export default function Home() {
   };
 
   const addAssessment = async (subjectId: string, assessment: Omit<Assessment, 'id'>) => {
-    const newAssessment = await api.createAssignment(subjectId, assessment);
+    const newAssessment = await api.createAssessment(subjectId, assessment, supabase);
     if (newAssessment) {
       setSubjects(subjects.map(sub => {
         if (sub.id === subjectId) {
@@ -151,7 +195,7 @@ export default function Home() {
   };
 
   const updateAssessment = async (subjectId: string, assessmentId: string, updatedAssessment: Omit<Assessment, 'id'>) => {
-    const updated = await api.updateAssignment(assessmentId, updatedAssessment);
+    const updated = await api.updateAssessment(assessmentId, updatedAssessment, supabase);
     if (updated) {
       setSubjects(subjects.map(sub => {
         if (sub.id === subjectId) {
@@ -170,7 +214,7 @@ export default function Home() {
   };
 
   const deleteAssessment = async (subjectId: string, assessmentId: string) => {
-    const success = await api.deleteAssignment(assessmentId);
+    const success = await api.deleteAssessment(assessmentId, supabase);
     if (success) {
       setSubjects(subjects.map(sub => {
         if (sub.id === subjectId) {
@@ -213,12 +257,17 @@ export default function Home() {
     return <Auth onLogin={() => { loadSubjects(); }} />;
   }
 
-  // Onboarding view
-  if (isOnboarding) {
+  // Trends view
+  if (showTrends) {
+    return <TrendsView key={JSON.stringify(subjects)} subjects={subjects} onBack={() => setShowTrends(false)} />;
+  }
+
+  // Onboarding view - show if no subjects
+  if (subjects.length === 0) {
     return (
       <div className="min-h-screen bg-background text-foreground font-sans flex items-center justify-center p-4">
         <div className="max-w-md w-full space-y-8">
-          <div className="text-center space-y-2 relative">
+          <div className="text-center space-y-2">
             <h1 className="text-3xl font-bold">IB Grade Tracker</h1>
             <p className="text-muted-foreground">Set up your 6 subjects to get started</p>
           </div>
@@ -242,7 +291,7 @@ export default function Home() {
                         size="icon"
                         className="h-8 w-8 text-muted-foreground hover:text-destructive"
                         onClick={async () => {
-                          const success = await api.deleteSubject(subject.id);
+                          const success = await api.deleteSubject(subject.id, supabase);
                           if (success) {
                             setSubjects(subjects.filter(s => s.id !== subject.id));
                           }
@@ -261,20 +310,14 @@ export default function Home() {
             })}
           </div>
 
-          {subjects.length === 6 && (
-            <Button className="w-full" size="lg" onClick={() => setIsOnboarding(false)}>
-              Continue to Dashboard
-              <ChevronRight className="ml-2 h-4 w-4" />
+          <div className="text-center">
+            <Button variant="ghost" size="sm" onClick={() => supabase.auth.signOut()}>
+              Sign Out
             </Button>
-          )}
+          </div>
         </div>
       </div>
     );
-  }
-
-  // Trends view
-  if (showTrends) {
-    return <TrendsView key={JSON.stringify(subjects)} subjects={subjects} onBack={() => setShowTrends(false)} />;
   }
 
   // Main dashboard view

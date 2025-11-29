@@ -32,8 +32,8 @@ create table subjects (
   unique(user_id, name)
 );
 
--- Assignments table
-create table assignments (
+-- Assessments table
+create table assessments (
   id uuid default uuid_generate_v4() primary key,
   subject_id uuid references subjects(id) on delete cascade not null,
   user_id uuid references auth.users(id) on delete cascade not null,
@@ -49,7 +49,7 @@ create table assignments (
 
 -- Enable Row Level Security
 alter table subjects enable row level security;
-alter table assignments enable row level security;
+alter table assessments enable row level security;
 
 -- RLS Policies for subjects table
 create policy "Users can view their own subjects"
@@ -68,27 +68,27 @@ create policy "Users can delete their own subjects"
   on subjects for delete
   using (auth.uid() = user_id);
 
--- RLS Policies for assignments table
-create policy "Users can view their own assignments"
-  on assignments for select
+-- RLS Policies for assessments table
+create policy "Users can view their own assessments"
+  on assessments for select
   using (auth.uid() = user_id);
 
-create policy "Users can insert their own assignments"
-  on assignments for insert
+create policy "Users can insert their own assessments"
+  on assessments for insert
   with check (auth.uid() = user_id);
 
-create policy "Users can update their own assignments"
-  on assignments for update
+create policy "Users can update their own assessments"
+  on assessments for update
   using (auth.uid() = user_id);
 
-create policy "Users can delete their own assignments"
-  on assignments for delete
+create policy "Users can delete their own assessments"
+  on assessments for delete
   using (auth.uid() = user_id);
 
 -- Indexes for better performance
 create index subjects_user_id_idx on subjects(user_id);
-create index assignments_user_id_idx on assignments(user_id);
-create index assignments_subject_id_idx on assignments(subject_id);
+create index assessments_user_id_idx on assessments(user_id);
+create index assessments_subject_id_idx on assessments(subject_id);
 
 -- Function to update updated_at timestamp
 create or replace function update_updated_at_column()
@@ -105,8 +105,8 @@ create trigger update_subjects_updated_at
   for each row
   execute procedure update_updated_at_column();
 
-create trigger update_assignments_updated_at
-  before update on assignments
+create trigger update_assessments_updated_at
+  before update on assessments
   for each row
   execute procedure update_updated_at_column();
 ```
@@ -165,6 +165,6 @@ After completing these setup steps, the application code will be updated to:
 - Create a Supabase client utility
 - Add authentication components (login/signup)
 - Replace localStorage with Supabase database calls
-- Sync all subjects and assignments to the cloud
+- Sync all subjects and assessments to the cloud
 
 Your data will be securely stored and accessible from any device after logging in!

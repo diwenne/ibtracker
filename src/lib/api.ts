@@ -1,54 +1,84 @@
 import { createClient } from './supabase';
+import { SupabaseClient } from '@supabase/supabase-js';
 import { Subject, Assessment, SubjectType } from './types';
-import { Subject as DBSubject, Assignment as DBAssignment } from '@/types/database';
+import { Subject as DBSubject, Assessment as DBAssessment } from '@/types/database';
+
+// Helper function to add timeout to promises
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operation: string): Promise<T> {
+    return Promise.race([
+        promise,
+        new Promise<T>((_, reject) =>
+            setTimeout(() => reject(new Error(`${operation} timed out after ${timeoutMs}ms`)), timeoutMs)
+        )
+    ]);
+}
 
 export const api = {
-    fetchSubjects: async (): Promise<Subject[]> => {
-        const supabase = createClient();
-        const { data: user } = await supabase.auth.getUser();
+    fetchSubjects: async (client?: SupabaseClient): Promise<Subject[]> => {
+        console.log('fetchSubjects: Using provided client or creating new one...');
+        const supabase = client || createClient();
 
-        if (!user.user) return [];
+        // If client was provided, we assume it's already configured/authenticated
+        // But we still need to check if there's a user for RLS? 
+        // Actually, let's just try to query. If RLS fails, it returns error.
+        // However, the original code returned [] if no session.
 
-        const { data, error } = await supabase
-            .from('subjects')
-            .select(`
+        try {
+            // Only check session if we created a new client OR if we want to be sure
+            // But checking session is what caused the timeout.
+            // Let's try to get session ONLY if we don't have a client passed in?
+            // No, the client passed in is just the object.
+
+            // Let's use getUser instead of getSession - it's lighter? No.
+            // Let's just trust the query.
+
+            console.log('fetchSubjects: Querying subjects...');
+            const { data, error } = await supabase
+                .from('subjects')
+                .select(`
         *,
-        assignments (*)
+        assessments (*)
       `)
-            .order('created_at', { ascending: true });
+                .order('created_at', { ascending: true });
 
-        if (error) {
-            console.error('Error fetching subjects:', error);
+            console.log('fetchSubjects: Query complete. Error:', error, 'Data:', data);
+
+            if (error) {
+                console.error('Error fetching subjects:', error);
+                return [];
+            }
+
+            // Map DB types to App types
+            return data.map((sub: any) => ({
+                id: sub.id,
+                name: sub.name,
+                type: sub.type as SubjectType,
+                assessments: (sub.assessments || []).map((assess: any) => ({
+                    id: assess.id,
+                    name: assess.name,
+                    ibGrade: assess.ib_grade,
+                    rawGrade: assess.raw_grade,
+                    rawPercent: assess.raw_percent,
+                    date: assess.date,
+                    notes: assess.notes,
+                })).sort((a: Assessment, b: Assessment) => new Date(b.date).getTime() - new Date(a.date).getTime())
+            }));
+        } catch (err) {
+            console.error('fetchSubjects: Error getting data:', err);
             return [];
         }
-
-        // Map DB types to App types
-        return data.map((sub: any) => ({
-            id: sub.id,
-            name: sub.name,
-            type: sub.type as SubjectType,
-            assessments: (sub.assignments || []).map((assign: any) => ({
-                id: assign.id,
-                name: assign.name,
-                ibGrade: assign.ib_grade,
-                rawGrade: assign.raw_grade,
-                rawPercent: assign.raw_percent,
-                date: assign.date,
-                notes: assign.notes,
-            })).sort((a: Assessment, b: Assessment) => new Date(b.date).getTime() - new Date(a.date).getTime())
-        }));
     },
 
-    createSubject: async (name: string, type: SubjectType): Promise<Subject | null> => {
-        const supabase = createClient();
-        const { data: user } = await supabase.auth.getUser();
+    createSubject: async (name: string, type: SubjectType, client?: SupabaseClient): Promise<Subject | null> => {
+        const supabase = client || createClient();
+        const { data: { session } } = await supabase.auth.getSession();
 
-        if (!user.user) return null;
+        if (!session) return null;
 
         const { data, error } = await supabase
             .from('subjects')
             .insert({
-                user_id: user.user.id,
+                user_id: session.user.id,
                 name,
                 type,
                 target_grade: 7 // Default, not really used in UI yet
@@ -69,8 +99,8 @@ export const api = {
         };
     },
 
-    deleteSubject: async (id: string): Promise<boolean> => {
-        const supabase = createClient();
+    deleteSubject: async (id: string, client?: SupabaseClient): Promise<boolean> => {
+        const supabase = client || createClient();
         const { error } = await supabase
             .from('subjects')
             .delete()
@@ -83,8 +113,8 @@ export const api = {
         return true;
     },
 
-    updateSubject: async (id: string, name: string, type: SubjectType): Promise<Subject | null> => {
-        const supabase = createClient();
+    updateSubject: async (id: string, name: string, type: SubjectType, client?: SupabaseClient): Promise<Subject | null> => {
+        const supabase = client || createClient();
         const { data, error } = await supabase
             .from('subjects')
             .update({ name, type })
@@ -105,17 +135,17 @@ export const api = {
         };
     },
 
-    createAssignment: async (subjectId: string, assessment: Omit<Assessment, 'id'>): Promise<Assessment | null> => {
-        const supabase = createClient();
-        const { data: user } = await supabase.auth.getUser();
+    createAssessment: async (subjectId: string, assessment: Omit<Assessment, 'id'>, client?: SupabaseClient): Promise<Assessment | null> => {
+        const supabase = client || createClient();
+        const { data: { session } } = await supabase.auth.getSession();
 
-        if (!user.user) return null;
+        if (!session) return null;
 
         const { data, error } = await supabase
-            .from('assignments')
+            .from('assessments')
             .insert({
                 subject_id: subjectId,
-                user_id: user.user.id,
+                user_id: session.user.id,
                 name: assessment.name,
                 ib_grade: assessment.ibGrade,
                 raw_grade: assessment.rawGrade,
@@ -142,11 +172,11 @@ export const api = {
         };
     },
 
-    updateAssignment: async (id: string, assessment: Omit<Assessment, 'id'>): Promise<Assessment | null> => {
-        const supabase = createClient();
+    updateAssessment: async (id: string, assessment: Omit<Assessment, 'id'>, client?: SupabaseClient): Promise<Assessment | null> => {
+        const supabase = client || createClient();
 
         const { data, error } = await supabase
-            .from('assignments')
+            .from('assessments')
             .update({
                 name: assessment.name,
                 ib_grade: assessment.ibGrade,
@@ -175,10 +205,10 @@ export const api = {
         };
     },
 
-    deleteAssignment: async (id: string): Promise<boolean> => {
-        const supabase = createClient();
+    deleteAssessment: async (id: string, client?: SupabaseClient): Promise<boolean> => {
+        const supabase = client || createClient();
         const { error } = await supabase
-            .from('assignments')
+            .from('assessments')
             .delete()
             .eq('id', id);
 

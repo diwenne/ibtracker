@@ -8,7 +8,7 @@ export type Subject = {
   updated_at: string
 }
 
-export type Assignment = {
+export type Assessment = {
   id: string
   subject_id: string
   user_id: string
@@ -17,6 +17,7 @@ export type Assignment = {
   raw_grade: string | null
   raw_percent: number | null
   date: string
+  notes: string | null
   created_at: string
   updated_at: string
 }
