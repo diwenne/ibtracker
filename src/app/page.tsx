@@ -1317,32 +1317,89 @@ function HelpView({ onBack }: { onBack: () => void }) {
               <AccordionContent>
                 <div className="space-y-3 text-muted-foreground">
                   <p>
-                    Your predicted grades in this app are estimates powered by weighted performance and AI. They do not replace your teacher’s official IB predicted grades.
+                    Your predicted grades in this app are estimates powered by weighted performance and AI (OpenAI GPT-3.5-turbo). They do not replace your teacher's official IB predicted grades.
                   </p>
                   <div className="bg-muted/50 rounded-lg p-4 space-y-4">
                     <div>
-                      <h4 className="font-semibold text-foreground mb-1">1️⃣ Weighted Assessments</h4>
-                      <p className="text-sm">
-                        Big exams and IAs matter more than quizzes. You can assign categories (e.g., Exam, Test, Quiz) to assessments, and the app will weight them accordingly. Assessment weights always add up to 100%.
+                      <h4 className="font-semibold text-foreground mb-1">1️⃣ Weighted Assessments (Normalized per Subject)</h4>
+                      <p className="text-sm mb-2">
+                        Big exams and IAs matter more than quizzes. You can assign categories (e.g., Exam, Test, Quiz, IA) to assessments with raw weights. The app automatically normalizes weights to sum to 1.0 (100%).
                       </p>
+                      <div className="text-xs bg-background/50 rounded p-2 space-y-1">
+                        <p><strong>Default Category Weights (suggested):</strong></p>
+                        <ul className="list-disc list-inside ml-2">
+                          <li>Exams/Mocks: 2.0</li>
+                          <li>Internal Assessments (IA): 1.0</li>
+                          <li>Major Tests: 1.0</li>
+                          <li>Quizzes/Homework: 0.5</li>
+                        </ul>
+                        <p className="mt-2"><strong>Normalization:</strong> normalized_weight = raw_weight / sum(all_raw_weights)</p>
+                        <p><strong>Assessment Weight:</strong> Each assessment gets an equal share of its category's normalized weight</p>
+                      </div>
                     </div>
                     <div>
-                      <h4 className="font-semibold text-foreground mb-1">2️⃣ HL vs SL Differences</h4>
-                      <ul className="list-disc list-inside text-sm ml-1">
-                        <li><strong>HL:</strong> Predictions emphasize improvement trends and scaling. IB Grades are the primary input.</li>
-                        <li><strong>SL:</strong> Predictions rely more on weighted raw percentages converted to IB bands.</li>
+                      <h4 className="font-semibold text-foreground mb-1">2️⃣ HL vs SL Assessment Input & Calculation Rules</h4>
+                      <div className="text-sm space-y-2">
+                        <div>
+                          <p className="font-medium text-foreground">HL (Higher Level) Subjects:</p>
+                          <ul className="list-disc list-inside ml-2">
+                            <li>IB Grade (1-7) is <strong>required</strong></li>
+                            <li>Raw percentage is optional (less meaningful due to heavy scaling)</li>
+                            <li>Predictions emphasize <strong>trends and improvement over time</strong></li>
+                            <li>Formula: weighted_avg_ib = Σ(ib_grade × weight)</li>
+                            <li>Later assessments + high-weight categories influence predictions more</li>
+                          </ul>
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">SL (Standard Level) Subjects:</p>
+                          <ul className="list-disc list-inside ml-2">
+                            <li>Must include either <strong>raw percentage OR IB Grade</strong></li>
+                            <li>Raw percentage is preferred and converted to IB grade using SL boundaries</li>
+                            <li>Predictions rely on <strong>weighted average percentages</strong></li>
+                            <li>Formula: weighted_avg_pct = Σ(raw_percentage × weight), then convert to IB band</li>
+                            <li>Trend adjustments are smaller than HL</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-foreground mb-1">3️⃣ AI-Enhanced Predictions (OpenAI GPT-3.5-turbo)</h4>
+                      <p className="text-sm mb-2">
+                        AI analyzes your assessment data like an experienced IB teacher would, considering:
+                      </p>
+                      <ul className="list-disc list-inside text-sm ml-2 space-y-1">
+                        <li><strong>Weighted Performance:</strong> Categories with higher weights contribute more to the final grade</li>
+                        <li><strong>Improvement Trends:</strong> Recent performance is more indicative than old results</li>
+                        <li><strong>Contextual Notes:</strong> If you note "bad day" or illness, the AI may discount that assessment slightly</li>
+                        <li><strong>HL Scaling:</strong> For HL, AI focuses on IB grade trends; percentages matter less due to heavy teacher curves</li>
+                        <li><strong>SL Percentages:</strong> For SL, AI anchors on weighted average percentage, then fine-tunes based on trends</li>
                       </ul>
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-foreground mb-1">3️⃣ AI Trend Analysis</h4>
-                      <p className="text-sm">
-                        AI reviews your results, weights, and notes to make predictions similar to teacher judgment. It considers improvement over time and anomalies explained in your notes.
+                      <p className="text-xs mt-2 text-muted-foreground italic">
+                        The AI receives a compact prompt with all assessments (name, date, IB grade, raw %, category, weight, notes) and outputs a predicted grade (1-7) with a brief explanation.
                       </p>
                     </div>
                     <div>
-                      <h4 className="font-semibold text-foreground mb-1">4️⃣ Automatic Updates & Fallback</h4>
+                      <h4 className="font-semibold text-foreground mb-1">4️⃣ Automatic Updates & Mathematical Fallback</h4>
+                      <div className="text-sm space-y-2">
+                        <p>
+                          <strong>Smart Triggering:</strong> When you add, edit, or delete an assessment (or modify categories), the subject is marked "dirty." The next time you view it, the AI automatically generates a fresh prediction and caches it.
+                        </p>
+                        <p>
+                          <strong>Fallback Logic:</strong> If AI is unavailable or rate-limited, the app uses a local weighted mathematical prediction:
+                        </p>
+                        <ul className="list-disc list-inside ml-2 text-xs">
+                          <li>HL: weighted_avg_ib_grade → round to nearest integer (1-7)</li>
+                          <li>SL: weighted_avg_percentage → convert to IB band using SL boundaries</li>
+                        </ul>
+                        <p className="text-xs text-muted-foreground italic">
+                          This ensures you always have a prediction, even without AI access.
+                        </p>
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-foreground mb-1">5️⃣ Cost Optimization</h4>
                       <p className="text-sm">
-                        Predictions refresh when new assessments are added. If AI is unavailable, a weighted mathematical prediction is used as a fallback.
+                        To minimize API costs, predictions are cached and only regenerated when data changes. Long notes are trimmed, and we use GPT-3.5-turbo (fast and inexpensive) instead of more expensive models.
                       </p>
                     </div>
                   </div>
