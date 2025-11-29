@@ -179,8 +179,9 @@ export function calculateLocalPrediction(
             details: `Weighted average of IB grades (HL logic)`
         }
     } else {
-        // SL result is in 0-100 scale, convert to 1-7
-        const grade = convertPercentToIbGrade(finalScore)
+        // SL result is in 0-100 scale, round then convert to 1-7
+        const roundedScore = Math.round(finalScore)
+        const grade = convertPercentToIbGrade(roundedScore)
         return {
             grade,
             method: 'weighted-percent',
