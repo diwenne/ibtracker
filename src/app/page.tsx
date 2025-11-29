@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Plus, Trash2, ChevronRight, TrendingUp, Home as HomeIcon, Pencil, Info } from "lucide-react";
+import { Plus, Trash2, ChevronRight, TrendingUp, Home as HomeIcon, Pencil, Info, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -62,6 +62,57 @@ function formatDateForDisplay(isoDate: string): string {
     return `${parseInt(parts[1])}/${parseInt(parts[2])}/${parts[0]}`;
   }
   return isoDate;
+}
+
+// Footer component used across all pages
+function Footer() {
+  return (
+    <footer className="bg-background py-4 mt-auto">
+      <div className="container mx-auto px-6">
+        <div className="flex items-center justify-center gap-3 text-xs text-muted-foreground">
+          <span>© {new Date().getFullYear()} Diwen Huang</span>
+          <a
+            href="mailto:diwennee@gmail.com"
+            className="hover:text-foreground transition-colors"
+          >
+            <Mail size={16} />
+          </a>
+          <a
+            href="https://github.com/diwenne"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-foreground transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4" /><path d="M9 18c-4.51 2-5-2-7-2" /></svg>
+          </a>
+          <a
+            href="https://x.com/diwennee"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-foreground transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z" /></svg>
+          </a>
+          <a
+            href="https://linkedin.com/in/diwenh5"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-foreground transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z" /><rect width="4" height="12" x="2" y="9" /><circle cx="4" cy="4" r="2" /></svg>
+          </a>
+          <a
+            href="https://instagram.com/devdiwen"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-foreground transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="20" x="2" y="2" rx="5" ry="5" /><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" /><line x1="17.5" x2="17.51" y1="6.5" y2="6.5" /></svg>
+          </a>
+        </div>
+      </div>
+    </footer>
+  );
 }
 
 export default function Home() {
@@ -334,7 +385,10 @@ export default function Home() {
       <header className="bg-background border-b">
         <div className="container mx-auto px-6 py-6 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <h1 className="font-bold text-2xl tracking-tight text-foreground">IB Tracker</h1>
+            <div className="flex items-center gap-2">
+              <img src="/iblogo.png" alt="IB" className="h-8 w-auto" />
+              <h1 className="font-bold text-2xl tracking-tight text-foreground">Tracker</h1>
+            </div>
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setShowHelp(true)}>
               <Info className="h-4 w-4" />
             </Button>
@@ -388,38 +442,7 @@ export default function Home() {
         </section>
       </main>
 
-      {/* Footer */}
-      <footer className="bg-background py-4 mt-auto">
-        <div className="container mx-auto px-6">
-          <div className="flex items-center justify-center gap-3 text-xs text-muted-foreground">
-            <span>© {new Date().getFullYear()} Diwen Huang</span>
-            <a
-              href="https://github.com/diwenhuang"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:text-foreground transition-colors"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4" /><path d="M9 18c-4.51 2-5-2-7-2" /></svg>
-            </a>
-            <a
-              href="https://twitter.com/diwenhuang"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:text-foreground transition-colors"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z" /></svg>
-            </a>
-            <a
-              href="https://linkedin.com/in/diwenhuang"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:text-foreground transition-colors"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z" /><rect width="4" height="12" x="2" y="9" /><circle cx="4" cy="4" r="2" /></svg>
-            </a>
-          </div>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 }
@@ -1047,40 +1070,40 @@ function HelpView({ onBack }: { onBack: () => void }) {
               <AccordionContent>
                 <div className="space-y-3">
                   <p className="text-muted-foreground">
-                    Higher Level subjects typically use these percentage ranges to determine IB grades:
+                    HL teachers tend to use a heavy curve and convert IB grades to percentages using these boundaries:
                   </p>
                   <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="font-semibold">Grade 7</span>
-                      <span className="text-muted-foreground">80% and above</span>
+                      <span className="text-muted-foreground">98%+</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="font-semibold">Grade 6</span>
-                      <span className="text-muted-foreground">70% - 79%</span>
+                      <span className="text-muted-foreground">96%+</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="font-semibold">Grade 5</span>
-                      <span className="text-muted-foreground">60% - 69%</span>
+                      <span className="text-muted-foreground">90%+</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="font-semibold">Grade 4</span>
-                      <span className="text-muted-foreground">50% - 59%</span>
+                      <span className="text-muted-foreground">86%+</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="font-semibold">Grade 3</span>
-                      <span className="text-muted-foreground">40% - 49%</span>
+                      <span className="text-muted-foreground">76%+</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="font-semibold">Grade 2</span>
-                      <span className="text-muted-foreground">30% - 39%</span>
+                      <span className="text-muted-foreground">50%+</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="font-semibold">Grade 1</span>
-                      <span className="text-muted-foreground">0% - 29%</span>
+                      <span className="text-muted-foreground">Below 50%</span>
                     </div>
                   </div>
                   <p className="text-muted-foreground text-sm">
-                    Note: These are general boundaries. Actual boundaries may vary slightly by subject and exam session.
+                    Note: HL uses "huge scaling" - teachers apply significant curves when converting IB grades to percentages.
                   </p>
                 </div>
               </AccordionContent>
@@ -1091,40 +1114,40 @@ function HelpView({ onBack }: { onBack: () => void }) {
               <AccordionContent>
                 <div className="space-y-3">
                   <p className="text-muted-foreground">
-                    Standard Level subjects typically use these percentage ranges to determine IB grades:
+                    SL teachers tend to use minimal curve and convert raw percentages directly to IB grades:
                   </p>
                   <div className="bg-muted/50 rounded-lg p-4 space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="font-semibold">Grade 7</span>
-                      <span className="text-muted-foreground">75% and above</span>
+                      <span className="text-muted-foreground">96% - 100%</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="font-semibold">Grade 6</span>
-                      <span className="text-muted-foreground">65% - 74%</span>
+                      <span className="text-muted-foreground">90% - 95%</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="font-semibold">Grade 5</span>
-                      <span className="text-muted-foreground">55% - 64%</span>
+                      <span className="text-muted-foreground">86% - 89%</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="font-semibold">Grade 4</span>
-                      <span className="text-muted-foreground">45% - 54%</span>
+                      <span className="text-muted-foreground">76% - 85%</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="font-semibold">Grade 3</span>
-                      <span className="text-muted-foreground">35% - 44%</span>
+                      <span className="text-muted-foreground">70% - 75%</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="font-semibold">Grade 2</span>
-                      <span className="text-muted-foreground">25% - 34%</span>
+                      <span className="text-muted-foreground">50% - 69%</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="font-semibold">Grade 1</span>
-                      <span className="text-muted-foreground">0% - 24%</span>
+                      <span className="text-muted-foreground">0% - 49%</span>
                     </div>
                   </div>
                   <p className="text-muted-foreground text-sm">
-                    Note: SL subjects generally have slightly lower grade boundaries than HL subjects. Actual boundaries may vary by subject and exam session.
+                    Note: SL teachers typically don't apply heavy curves, converting raw percentages more directly to IB grades.
                   </p>
                 </div>
               </AccordionContent>
@@ -1198,7 +1221,10 @@ function HelpView({ onBack }: { onBack: () => void }) {
             </AccordionItem>
           </Accordion>
         </div>
+
       </main>
+
+      <Footer />
     </div>
   );
 }
@@ -1237,7 +1263,10 @@ function TrendsView({ subjects, onBack }: { subjects: Subject[], onBack: () => v
       {/* Header */}
       <header className="bg-background border-b">
         <div className="container mx-auto px-6 py-6 flex items-center justify-between">
-          <h1 className="font-bold text-2xl tracking-tight text-foreground">IB Tracker</h1>
+          <div className="flex items-center gap-2">
+            <img src="/iblogo.png" alt="IB" className="h-8 w-auto" />
+            <h1 className="font-bold text-2xl tracking-tight text-foreground">Tracker</h1>
+          </div>
           <Button variant="outline" onClick={onBack}>
             <HomeIcon className="mr-2 h-4 w-4" />
             Back to Dashboard
@@ -1318,38 +1347,7 @@ function TrendsView({ subjects, onBack }: { subjects: Subject[], onBack: () => v
         </div>
       </main>
 
-      {/* Footer */}
-      <footer className="bg-background py-4 mt-auto">
-        <div className="container mx-auto px-6">
-          <div className="flex items-center justify-center gap-3 text-xs text-muted-foreground">
-            <span>© {new Date().getFullYear()} Diwen Huang</span>
-            <a
-              href="https://github.com/diwenhuang"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:text-foreground transition-colors"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4" /><path d="M9 18c-4.51 2-5-2-7-2" /></svg>
-            </a>
-            <a
-              href="https://twitter.com/diwenhuang"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:text-foreground transition-colors"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z" /></svg>
-            </a>
-            <a
-              href="https://linkedin.com/in/diwenhuang"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:text-foreground transition-colors"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z" /><rect width="4" height="12" x="2" y="9" /><circle cx="4" cy="4" r="2" /></svg>
-            </a>
-          </div>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 }
