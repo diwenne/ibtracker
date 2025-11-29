@@ -443,7 +443,11 @@ export default function Home() {
         <section className="w-full max-w-3xl">
           <div className="grid grid-cols-2 gap-x-16 gap-y-4">
             {subjects.map((subject) => {
-              const percentage = calculatePercentage(subject.assessments, subject.type);
+              // Use local prediction for weighted percentage (respects category weights)
+              const localPred = calculateLocalPrediction(subject, subject.assessments, subject.categories || []);
+              const percentage = localPred && subject.type === 'SL'
+                ? parseFloat(localPred.details.match(/(\d+\.?\d*)%/)?.[1] || '0')
+                : calculatePercentage(subject.assessments, subject.type);
               const grade = calculatePredictedGrade(subject.assessments);
 
               return (
@@ -560,9 +564,15 @@ function SubjectGradeCard({
   const localPrediction = calculateLocalPrediction(subject, subject.assessments, subject.categories || []);
 
   // Determine which prediction to show
-  const displayGrade = subject.aiPredictedGrade || localPrediction?.grade || grade;
-  const isAi = !!subject.aiPredictedGrade;
-  const predictionDetails = subject.aiExplanation || localPrediction?.details;
+  // For SL subjects, ALWAYS use local calculation (AI is too unreliable with weights)
+  // For HL subjects, use AI if available (trends/adjustments are useful)
+  const displayGrade = subject.type === 'SL'
+    ? (localPrediction?.grade || grade)
+    : (subject.aiPredictedGrade || localPrediction?.grade || grade);
+  const isAi = subject.type === 'HL' && !!subject.aiPredictedGrade;
+  const predictionDetails = subject.type === 'SL'
+    ? localPrediction?.details
+    : (subject.aiExplanation || localPrediction?.details);
 
   // Determine color based on grade quality
   const getGradeColor = (grade: number) => {

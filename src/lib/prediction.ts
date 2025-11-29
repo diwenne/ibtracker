@@ -65,9 +65,14 @@ export function calculateLocalPrediction(
     let totalWeightedScore = 0
     let totalUsedWeight = 0
 
+    console.log('[PREDICTION DEBUG] Subject:', subject.name, 'Type:', subject.type)
+    console.log('[PREDICTION DEBUG] Categories:', categories.map(c => ({ name: c.name, weight: c.rawWeight })))
+    console.log('[PREDICTION DEBUG] Total assessments:', assessments.length, 'Uncategorized:', uncategorized.length)
+
     // 2. Calculate weighted score for categorized assessments
     for (const cat of categories) {
         const catAssessments = assessmentsByCategory[cat.id] || []
+        console.log(`[PREDICTION DEBUG] Category "${cat.name}" (weight: ${cat.rawWeight}):`, catAssessments.length, 'assessments')
         if (catAssessments.length === 0) continue
 
         const catWeight = categoryWeights[cat.id]
@@ -105,6 +110,7 @@ export function calculateLocalPrediction(
 
         if (validCount > 0) {
             const catAvg = catTotalScore / validCount
+            console.log(`[PREDICTION DEBUG] Category "${cat.name}" avg:`, catAvg, '| Adding:', catAvg * catWeight)
             totalWeightedScore += catAvg * catWeight
             totalUsedWeight += catWeight
         }
@@ -115,6 +121,7 @@ export function calculateLocalPrediction(
     if (uncategorized.length > 0) {
         const totalCategoryWeight = categories.reduce((sum, cat) => sum + cat.rawWeight, 0)
         const uncategorizedWeight = Math.max(0, 1.0 - totalCategoryWeight)
+        console.log('[PREDICTION DEBUG] Uncategorized weight:', uncategorizedWeight, '(1.0 -', totalCategoryWeight, ')')
 
         if (uncategorizedWeight > 0) {
             let uncatTotalScore = 0
@@ -145,16 +152,24 @@ export function calculateLocalPrediction(
 
             if (validCount > 0) {
                 const uncatAvg = uncatTotalScore / validCount
+                console.log('[PREDICTION DEBUG] Uncategorized avg:', uncatAvg, '| Adding:', uncatAvg * uncategorizedWeight)
                 totalWeightedScore += uncatAvg * uncategorizedWeight
                 totalUsedWeight += uncategorizedWeight
             }
+        } else {
+            console.log('[PREDICTION DEBUG] Skipping uncategorized (weight = 0)')
         }
     }
 
+    console.log('[PREDICTION DEBUG] Total weighted score:', totalWeightedScore, '| Total used weight:', totalUsedWeight)
+
     if (totalUsedWeight === 0) return null
 
-    // Re-normalize if some categories were empty
-    const finalScore = totalWeightedScore / totalUsedWeight
+    // Since we're using direct percentage weights (0.0-1.0), the final score IS the weighted sum
+    // We only divide by totalUsedWeight if it's less than 1.0 (to handle case where some categories are empty)
+    // But if totalUsedWeight < 1.0, we should NOT scale up - just use the weighted score directly
+    const finalScore = totalWeightedScore
+    console.log('[PREDICTION DEBUG] Final score:', finalScore)
 
     if (isHL) {
         // HL result is already in 1-7 scale
@@ -200,12 +215,12 @@ function estimatePercentFromIbGrade(grade: number): number {
 }
 
 function convertPercentToIbGrade(percent: number): number {
-    // Standard boundaries (approximate)
-    if (percent >= 77) return 7
-    if (percent >= 63) return 6
-    if (percent >= 50) return 5
-    if (percent >= 38) return 4
-    if (percent >= 28) return 3
-    if (percent >= 15) return 2
-    return 1
+    // SL boundaries from plan.md
+    if (percent >= 96) return 7  // 96-100
+    if (percent >= 90) return 6  // 90-95
+    if (percent >= 86) return 5  // 86-89
+    if (percent >= 76) return 4  // 76-85
+    if (percent >= 70) return 3  // 70-75
+    if (percent >= 50) return 2  // 50-69
+    return 1  // 0-49
 }

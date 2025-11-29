@@ -13,6 +13,22 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operation: strin
     ]);
 }
 
+// Helper function to ensure we have a valid session
+async function ensureSession(client: SupabaseClient): Promise<any> {
+    const { data: { session }, error } = await client.auth.getSession();
+
+    if (error) {
+        console.error('Session error:', error);
+        throw new Error('Failed to get session');
+    }
+
+    if (!session) {
+        throw new Error('No active session');
+    }
+
+    return session;
+}
+
 export const api = {
     fetchSubjects: async (client?: SupabaseClient): Promise<Subject[]> => {
         console.log('fetchSubjects: Using provided client or creating new one...');
@@ -245,62 +261,118 @@ export const api = {
 
     createCategory: async (subjectId: string, name: string, rawWeight: number, client?: SupabaseClient): Promise<Category | null> => {
         const supabase = client || createClient();
-        const { data: { session } } = await supabase.auth.getSession();
 
-        if (!session) return null;
+        try {
+            // Refresh session first to avoid stale session issues
+            const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
-        const { data, error } = await supabase
-            .from('categories')
-            .insert({
-                subject_id: subjectId,
-                user_id: session.user.id,
-                name,
-                raw_weight: rawWeight
-            })
-            .select()
-            .single();
+            if (sessionError || !session) {
+                console.error('Session error:', sessionError);
+                return null;
+            }
 
-        if (error) {
-            console.error('Error creating category:', error);
+            console.log('Creating category with session:', session.user.id);
+
+            const { data, error } = await supabase
+                .from('categories')
+                .insert({
+                    subject_id: subjectId,
+                    user_id: session.user.id,
+                    name,
+                    raw_weight: rawWeight
+                })
+                .select()
+                .single();
+
+            if (error) {
+                console.error('Error creating category:', error);
+                console.error('Error details:', JSON.stringify({
+                    code: error.code,
+                    message: error.message,
+                    details: error.details,
+                    hint: error.hint
+                }, null, 2));
+                return null;
+            }
+
+            if (!data) {
+                console.error('No data returned from category insert');
+                return null;
+            }
+
+            console.log('Category created successfully:', data);
+
+            // Mark subject dirty (don't await - run in background)
+            supabase.from('subjects').update({ prediction_dirty: true }).eq('id', subjectId)
+                .then(() => console.log('Subject marked dirty'))
+                .catch(err => console.warn('Failed to mark subject dirty:', err));
+
+            return {
+                id: data.id,
+                name: data.name,
+                rawWeight: data.raw_weight
+            };
+        } catch (err) {
+            console.error('Exception in createCategory:', err);
+            if (err instanceof Error) {
+                console.error('Error message:', err.message);
+                console.error('Error stack:', err.stack);
+            }
             return null;
         }
-
-        await supabase.from('subjects').update({ prediction_dirty: true }).eq('id', subjectId);
-
-        return {
-            id: data.id,
-            name: data.name,
-            rawWeight: data.raw_weight
-        };
     },
 
     updateCategory: async (id: string, name: string, rawWeight: number, client?: SupabaseClient): Promise<Category | null> => {
         const supabase = client || createClient();
 
-        // Get subject_id first
-        const { data: existing } = await supabase.from('categories').select('subject_id').eq('id', id).single();
+        try {
+            console.log('Updating category:', id, 'with weight:', rawWeight);
 
-        const { data, error } = await supabase
-            .from('categories')
-            .update({ name, raw_weight: rawWeight })
-            .eq('id', id)
-            .select()
-            .single();
+            // Get subject_id first
+            const { data: existing } = await supabase.from('categories').select('subject_id').eq('id', id).single();
 
-        if (error) {
-            console.error('Error updating category:', error);
+            if (!existing) {
+                console.error('Category not found:', id);
+                return null;
+            }
+
+            console.log('Found category, subject_id:', existing.subject_id);
+
+            const { data, error } = await supabase
+                .from('categories')
+                .update({ name, raw_weight: rawWeight })
+                .eq('id', id)
+                .select()
+                .single();
+
+            if (error) {
+                console.error('Error updating category:', error);
+                return null;
+            }
+
+            console.log('Category updated successfully:', data);
+
+            // Mark subject dirty
+            const { error: dirtyError } = await supabase
+                .from('subjects')
+                .update({ prediction_dirty: true })
+                .eq('id', existing.subject_id);
+
+            if (dirtyError) {
+                console.error('Error marking subject dirty:', dirtyError);
+            } else {
+                console.log('Subject marked dirty:', existing.subject_id);
+            }
+
+            return {
+                id: data.id,
+                name: data.name,
+                rawWeight: data.raw_weight
+            };
+        } catch (err) {
+            console.error('Exception in updateCategory:', err);
             return null;
         }
-
-        if (existing) {
-            await supabase.from('subjects').update({ prediction_dirty: true }).eq('id', existing.subject_id);
-        }
-
-        return {
-            id: data.id,
-            name: data.name,
-            rawWeight: data.raw_weight
-        };
     },
 
     deleteCategory: async (id: string, client?: SupabaseClient): Promise<boolean> => {

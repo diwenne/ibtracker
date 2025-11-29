@@ -59,16 +59,18 @@ export async function POST(request: Request) {
             rawGrade: a.rawGrade,
             date: a.date,
             notes: a.notes,
-            category: categories?.find((c: any) => c.id === a.categoryId)?.name || "Uncategorized"
+            category_id: a.categoryId || null,
+            category_name: categories?.find((c: any) => c.id === a.categoryId)?.name || "Uncategorized"
         }));
 
         const categoryData = categories?.map((c: any) => ({
+            id: c.id,
             name: c.name,
-            weight: c.raw_weight // This is now a direct percentage (0.0-1.0)
+            weight: c.rawWeight // This is now a direct percentage (0.0-1.0)
         })) || [];
 
         // Calculate uncategorized weight
-        const totalCategoryWeight = categories?.reduce((sum: number, c: any) => sum + c.raw_weight, 0) || 0;
+        const totalCategoryWeight = categories?.reduce((sum: number, c: any) => sum + c.rawWeight, 0) || 0;
         const uncategorizedWeight = Math.max(0, 1.0 - totalCategoryWeight);
         const hasUncategorized = assessments.some((a: any) => !a.categoryId);
 
@@ -80,7 +82,7 @@ export async function POST(request: Request) {
 
 Assessment data: ${JSON.stringify(assessmentData)}
 Category weightings: ${JSON.stringify(categoryData)}
-${hasUncategorized ? `\nIMPORTANT: Uncategorized assessments have an implicit weight of ${(uncategorizedWeight * 100).toFixed(1)}% (remaining weight after categories).` : ''}
+${hasUncategorized ? `\nCRITICAL: Uncategorized assessments have an implicit weight of ${(uncategorizedWeight * 100).toFixed(1)}% (remaining weight after categories).${uncategorizedWeight === 0 ? ' THIS MEANS UNCATEGORIZED ASSESSMENTS ARE WORTH 0% AND MUST BE COMPLETELY IGNORED IN YOUR CALCULATION.' : ''}` : ''}
 
 HL-SPECIFIC RULES (STRICT CONSERVATIVE APPROACH):
 1. CALCULATE WEIGHTED AVERAGE FIRST:
@@ -129,64 +131,73 @@ Output strictly in this JSON format:
 
 Assessment data: ${JSON.stringify(assessmentData)}
 Category weightings: ${JSON.stringify(categoryData)}
-${hasUncategorized ? `\nIMPORTANT: Uncategorized assessments have an implicit weight of ${(uncategorizedWeight * 100).toFixed(1)}% (remaining weight after categories).` : ''}
+${hasUncategorized ? `\nCRITICAL: Uncategorized assessments have an implicit weight of ${(uncategorizedWeight * 100).toFixed(1)}% (remaining weight after categories).${uncategorizedWeight === 0 ? ' THIS MEANS UNCATEGORIZED ASSESSMENTS ARE WORTH 0% AND MUST BE COMPLETELY IGNORED IN YOUR CALCULATION.' : ''}` : ''}
 
-SL-SPECIFIC RULES (STRICT MATHEMATICAL APPROACH):
-1. CALCULATE WEIGHTED AVERAGE PERCENTAGE:
-   - Category weights are DIRECT PERCENTAGES (e.g., 0.2 = 20%, 0.5 = 50%)
-   - Uncategorized assessments (if any) use the remaining weight
-   - weighted_avg_pct = Σ(raw_percentage × category_weight)
-   - This is your PRIMARY and DOMINANT predictor
-   - Convert to IB grade using STRICT boundaries:
-     * 96-100% = 7, 90-95% = 6, 86-89% = 5, 76-85% = 4, 70-75% = 3, 50-69% = 2, 0-49% = 1
+THIS IS PURE MATHEMATICS - NO INTERPRETATION, NO TRENDS, NO ADJUSTMENTS:
 
-2. BE EXTREMELY STRICT WITH BOUNDARIES:
-   - 95.9% = 6 (NOT 7, must be ≥96% for 7)
-   - 89.9% = 5 (NOT 6, must be ≥90% for 6)
-   - 85.9% = 4 (NOT 5, must be ≥86% for 5)
-   - Round DOWN when at boundary (95.5% → 6, NOT 7)
+STEP 1: CALCULATE WEIGHTED AVERAGE PERCENTAGE (EXACT FORMULA):
+1. For each category in categoryData:
+   - category has: id, name, weight (0.0 to 1.0)
+   - Find ALL assessments where assessment.category_id === category.id
+   - Calculate average of rawPercent for those assessments only
+   - category_contribution = category.weight × average_rawPercent
 
-3. TREND ADJUSTMENTS (ALMOST NONE):
-   - Trends can ONLY adjust by ±1 grade from weighted average
-   - Only adjust UP if:
-     * Student has 3+ recent high-weight assessments at higher grade
-     * AND weighted avg is within 2% of next boundary (e.g., 94.5%+ to consider 7)
-   - Default: stick to weighted average conversion, NO adjustment
+2. For uncategorized assessments (where category_id === null):
+   - Count how many assessments have category_id === null
+   - If uncategorized_weight > 0:
+     * Calculate average rawPercent of assessments with category_id === null
+     * uncategorized_contribution = uncategorized_weight × average_rawPercent
+   - If uncategorized_weight === 0:
+     * uncategorized_contribution = 0
+     * DO NOT use these assessments at all
 
-4. NEVER PREDICT ABOVE MAXIMUM ACHIEVED:
-   - If best percentage is 92% (grade 6), NEVER predict 7
-   - If percentages range 85-89% (grades 4-5), predict 5 or lower
-   - Be conservative: lean towards lower grade
+3. weighted_avg_pct = sum of all category_contributions + uncategorized_contribution
 
-5. WEIGHTING STRICT ENFORCEMENT:
-   - Higher weight categories (Exams, IAs) dominate the weighted average
-   - A single high-weight exam at 88% outweighs 5 quizzes at 95%
+EXAMPLE WITH YOUR DATA:
+- Category Silent Drills (id=X, weight=1.0), assessments with category_id=X: [100%]
+  → contribution = 1.0 × 100 = 100
+- Uncategorized (category_id=null): weight=0.0
+  → contribution = 0
+- Result: 100%
 
-6. NOTES ARE CRITICAL - READ CAREFULLY:
-   - NOTES field contains important context that MUST significantly affect weight
-   - If notes say "worth VERY little" or "doesn't count" → reduce that assessment's weight by 50-90%
-   - If notes say "bad day", "sick", "unfair" → reduce weight by 30-50%
-   - If notes say "extra important", "final", "cumulative" → increase weight by 20-30%
-   - If notes say "practice only" or "mock" → reduce weight by 40-60%
-   - Empty notes = use normal weight
-   - NEVER ignore notes - they directly modify how much an assessment should count
+STEP 2: CONVERT TO IB GRADE (STRICT BOUNDARIES):
+96-100% = 7
+90-95% = 6
+86-89% = 5
+76-85% = 4
+70-75% = 3
+50-69% = 2
+0-49% = 1
 
-7. FINAL CHECK:
-   - Does prediction match weighted_avg_pct conversion? If not, explain why
-   - If weighted avg is 91% (grade 6), prediction should be 6 unless strong evidence
+THAT'S IT. NO OTHER RULES. NO TRENDS. NO ADJUSTMENTS. JUST USE THE FORMULA.
+
+Example:
+- Category "Tests" weight=1.0, assessments=[100%]
+  → contribution = 1.0 × 100 = 100
+- Uncategorized weight=0.0
+  → contribution = 0
+- weighted_avg_pct = 100
+- Grade = 7
 
 Output strictly in this JSON format:
 {
   "predictedGrade": number,
-  "explanation": "string (max 2 sentences stating weighted avg % and boundary)"
+  "explanation": "Weighted average: X.X%. Grade boundary: Y."
 }`;
+
+        console.log('[AI PREDICT] Subject:', subject.name, 'Type:', subject.type);
+        console.log('[AI PREDICT] Assessment data:', JSON.stringify(assessmentData, null, 2));
+        console.log('[AI PREDICT] Category data:', JSON.stringify(categoryData, null, 2));
+        console.log('[AI PREDICT] Uncategorized weight:', uncategorizedWeight);
 
         const completion = await openai.chat.completions.create({
             model: "gpt-3.5-turbo",
             messages: [
                 {
                     role: "system",
-                    content: "You are an expert IB Coordinator and teacher. Your task is to predict students' final IB grades (1-7) based on their assessment data. Always respond with valid JSON only, no markdown formatting."
+                    content: isHL
+                        ? "You are an expert IB Coordinator and teacher. Your task is to predict students' final IB grades (1-7) based on their assessment data. Always respond with valid JSON only, no markdown formatting."
+                        : "You are a mathematical calculator. For SL subjects, calculate the exact weighted average percentage and convert to IB grade. This is pure mathematics - no interpretation, no trends, no adjustments. Always respond with valid JSON only, no markdown formatting."
                 },
                 {
                     role: "user",
@@ -194,7 +205,7 @@ Output strictly in this JSON format:
                 }
             ],
             response_format: { type: "json_object" },
-            temperature: 0.7,
+            temperature: isHL ? 0.3 : 0.1,
         });
 
         const responseText = completion.choices[0].message.content;
@@ -203,6 +214,7 @@ Output strictly in this JSON format:
         }
 
         const prediction = JSON.parse(responseText);
+        console.log('[AI PREDICT] AI Response:', prediction);
 
         // Update the subject in the database
         const { error: updateError } = await supabase
