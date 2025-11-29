@@ -7,25 +7,17 @@ export type PredictionResult = {
 }
 
 /**
- * Normalizes category weights so they sum to 1.0
+ * Gets the direct weights for categories (no normalization needed now - weights are already percentages)
  */
 export function normalizeWeights(categories: Category[]): Record<string, number> {
-    const totalRawWeight = categories.reduce((sum, cat) => sum + cat.rawWeight, 0)
-    const normalized: Record<string, number> = {}
+    const weights: Record<string, number> = {}
 
-    if (totalRawWeight === 0) {
-        // Edge case: all weights 0, distribute equally
-        const equalWeight = 1 / categories.length
-        categories.forEach(cat => {
-            normalized[cat.id] = equalWeight
-        })
-    } else {
-        categories.forEach(cat => {
-            normalized[cat.id] = cat.rawWeight / totalRawWeight
-        })
-    }
+    // Since raw weights are now direct percentages (0.0-1.0), we just use them directly
+    categories.forEach(cat => {
+        weights[cat.id] = cat.rawWeight
+    })
 
-    return normalized
+    return weights
 }
 
 /**
@@ -54,8 +46,10 @@ export function calculateLocalPrediction(
         }
     })
 
-    // If no categories are defined or used, fall back to simple average of IB grades
-    if (categories.length === 0 || (Object.keys(assessmentsByCategory).length === 0 && uncategorized.length > 0)) {
+    const isHL = subject.type === 'HL'
+
+    // If no categories are defined, fall back to simple average of IB grades
+    if (categories.length === 0) {
         const validGrades = assessments.filter(a => a.ibGrade !== null && a.ibGrade !== undefined).map(a => a.ibGrade!)
         if (validGrades.length === 0) return null
 
@@ -67,20 +61,16 @@ export function calculateLocalPrediction(
         }
     }
 
-    const normalizedWeights = normalizeWeights(categories)
+    const categoryWeights = normalizeWeights(categories)
     let totalWeightedScore = 0
     let totalUsedWeight = 0
 
-    // 2. Calculate weighted score
-    // HL: Prefer IB Grade. SL: Prefer Raw Percent.
-
-    const isHL = subject.type === 'HL'
-
+    // 2. Calculate weighted score for categorized assessments
     for (const cat of categories) {
         const catAssessments = assessmentsByCategory[cat.id] || []
         if (catAssessments.length === 0) continue
 
-        const catWeight = normalizedWeights[cat.id]
+        const catWeight = categoryWeights[cat.id]
 
         // Calculate average score for this category
         let catTotalScore = 0
@@ -120,9 +110,46 @@ export function calculateLocalPrediction(
         }
     }
 
-    // Handle uncategorized assessments (treat as a separate category with remaining weight? 
-    // For now, ignore them in weighted calc if categories exist, or warn user)
-    // To keep it simple: We only calculate based on categorized items if categories exist.
+    // 3. Handle uncategorized assessments
+    // Uncategorized assessments get the remaining weight (1.0 - sum of category weights)
+    if (uncategorized.length > 0) {
+        const totalCategoryWeight = categories.reduce((sum, cat) => sum + cat.rawWeight, 0)
+        const uncategorizedWeight = Math.max(0, 1.0 - totalCategoryWeight)
+
+        if (uncategorizedWeight > 0) {
+            let uncatTotalScore = 0
+            let validCount = 0
+
+            for (const a of uncategorized) {
+                let score: number | null = null
+
+                if (isHL) {
+                    if (a.ibGrade !== null && a.ibGrade !== undefined) {
+                        score = a.ibGrade
+                    } else if (a.rawPercent !== null && a.rawPercent !== undefined) {
+                        score = estimateIbGradeFromPercent(a.rawPercent)
+                    }
+                } else {
+                    if (a.rawPercent !== null && a.rawPercent !== undefined) {
+                        score = a.rawPercent
+                    } else if (a.ibGrade !== null && a.ibGrade !== undefined) {
+                        score = estimatePercentFromIbGrade(a.ibGrade)
+                    }
+                }
+
+                if (score !== null) {
+                    uncatTotalScore += score
+                    validCount++
+                }
+            }
+
+            if (validCount > 0) {
+                const uncatAvg = uncatTotalScore / validCount
+                totalWeightedScore += uncatAvg * uncategorizedWeight
+                totalUsedWeight += uncategorizedWeight
+            }
+        }
+    }
 
     if (totalUsedWeight === 0) return null
 

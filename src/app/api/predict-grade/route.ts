@@ -64,8 +64,13 @@ export async function POST(request: Request) {
 
         const categoryData = categories?.map((c: any) => ({
             name: c.name,
-            weight: c.raw_weight
+            weight: c.raw_weight // This is now a direct percentage (0.0-1.0)
         })) || [];
+
+        // Calculate uncategorized weight
+        const totalCategoryWeight = categories?.reduce((sum: number, c: any) => sum + c.raw_weight, 0) || 0;
+        const uncategorizedWeight = Math.max(0, 1.0 - totalCategoryWeight);
+        const hasUncategorized = assessments.some((a: any) => !a.categoryId);
 
         // Create subject-specific prompt based on HL vs SL
         const isHL = subject.type === "HL";
@@ -75,10 +80,13 @@ export async function POST(request: Request) {
 
 Assessment data: ${JSON.stringify(assessmentData)}
 Category weightings: ${JSON.stringify(categoryData)}
+${hasUncategorized ? `\nIMPORTANT: Uncategorized assessments have an implicit weight of ${(uncategorizedWeight * 100).toFixed(1)}% (remaining weight after categories).` : ''}
 
 HL-SPECIFIC RULES (STRICT CONSERVATIVE APPROACH):
 1. CALCULATE WEIGHTED AVERAGE FIRST:
-   - Compute weighted_avg = Σ(ib_grade × normalized_weight)
+   - Category weights are DIRECT PERCENTAGES (e.g., 0.2 = 20%, 0.5 = 50%)
+   - Uncategorized assessments (if any) use the remaining weight
+   - Compute weighted_avg = Σ(ib_grade × category_weight)
    - This weighted average is your BASELINE - do NOT deviate more than ±1 grade from it
    - Round DOWN if between grades (e.g., 5.7 → 5, NOT 6)
 
@@ -121,10 +129,13 @@ Output strictly in this JSON format:
 
 Assessment data: ${JSON.stringify(assessmentData)}
 Category weightings: ${JSON.stringify(categoryData)}
+${hasUncategorized ? `\nIMPORTANT: Uncategorized assessments have an implicit weight of ${(uncategorizedWeight * 100).toFixed(1)}% (remaining weight after categories).` : ''}
 
 SL-SPECIFIC RULES (STRICT MATHEMATICAL APPROACH):
 1. CALCULATE WEIGHTED AVERAGE PERCENTAGE:
-   - weighted_avg_pct = Σ(raw_percentage × normalized_weight)
+   - Category weights are DIRECT PERCENTAGES (e.g., 0.2 = 20%, 0.5 = 50%)
+   - Uncategorized assessments (if any) use the remaining weight
+   - weighted_avg_pct = Σ(raw_percentage × category_weight)
    - This is your PRIMARY and DOMINANT predictor
    - Convert to IB grade using STRICT boundaries:
      * 96-100% = 7, 90-95% = 6, 86-89% = 5, 76-85% = 4, 70-75% = 3, 50-69% = 2, 0-49% = 1

@@ -1404,20 +1404,20 @@ function HelpView({ onBack }: { onBack: () => void }) {
                   </p>
                   <div className="bg-muted/50 rounded-lg p-4 space-y-4">
                     <div>
-                      <h4 className="font-semibold text-foreground mb-1">1️⃣ Weighted Assessments (Normalized per Subject)</h4>
+                      <h4 className="font-semibold text-foreground mb-1">1️⃣ Weighted Assessments (Direct Percentage Weights)</h4>
                       <p className="text-sm mb-2">
-                        Big exams and IAs matter more than quizzes. You can assign categories (e.g., Exam, Test, Quiz, IA) to assessments with raw weights. The app automatically normalizes weights to sum to 1.0 (100%).
+                        Big exams and IAs matter more than quizzes. You can assign categories (e.g., Exam, Test, Quiz, IA) to assessments with direct percentage weights (0.0-1.0). Total category weights cannot exceed 100%.
                       </p>
                       <div className="text-xs bg-background/50 rounded p-2 space-y-1">
-                        <p><strong>Default Category Weights (suggested):</strong></p>
+                        <p><strong>Example Category Weights:</strong></p>
                         <ul className="list-disc list-inside ml-2">
-                          <li>Exams/Mocks: 2.0</li>
-                          <li>Internal Assessments (IA): 1.0</li>
-                          <li>Major Tests: 1.0</li>
-                          <li>Quizzes/Homework: 0.5</li>
+                          <li>Exams: 0.4 (40%)</li>
+                          <li>Internal Assessments (IA): 0.3 (30%)</li>
+                          <li>Tests: 0.2 (20%)</li>
+                          <li>Quizzes/Homework: 0.1 (10%)</li>
                         </ul>
-                        <p className="mt-2"><strong>Normalization:</strong> normalized_weight = raw_weight / sum(all_raw_weights)</p>
-                        <p><strong>Assessment Weight:</strong> Each assessment gets an equal share of its category's normalized weight</p>
+                        <p className="mt-2"><strong>Uncategorized Assessments:</strong> If total category weight is less than 100%, uncategorized assessments automatically get the remaining weight.</p>
+                        <p className="mt-1"><strong>Example:</strong> If categories total 60%, uncategorized assessments form an implicit category with 40% weight.</p>
                       </div>
                     </div>
                     <div>
