@@ -312,7 +312,7 @@ export default function Home() {
 
   // Trends view
   if (showTrends) {
-    return <TrendsView key={JSON.stringify(subjects)} subjects={subjects} onBack={() => setShowTrends(false)} />;
+    return <TrendsView key={JSON.stringify(subjects)} subjects={subjects} onBack={() => setShowTrends(false)} onShowHelp={() => setShowHelp(true)} />;
   }
 
   // Help view
@@ -394,10 +394,13 @@ export default function Home() {
             </Button>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setShowTrends(true)}>
-              <TrendingUp className="mr-2 h-4 w-4" />
-              View Trends
-            </Button>
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="text-xs">BETA</Badge>
+              <Button variant="outline" onClick={() => setShowTrends(true)}>
+                <TrendingUp className="mr-2 h-4 w-4" />
+                View Trends
+              </Button>
+            </div>
             <Button variant="ghost" onClick={() => supabase.auth.signOut()}>
               Sign Out
             </Button>
@@ -995,7 +998,7 @@ function HelpView({ onBack }: { onBack: () => void }) {
           <div>
             <h2 className="text-xl font-semibold mb-4">Welcome to IB Tracker</h2>
             <p className="text-muted-foreground">
-              Track your IB assessments and predict your final grades across all 6 subjects. Click on each section below to learn more.
+              I made this website to visualize and log my IB grades because I'm failing. Let's fail together 🫡
             </p>
           </div>
 
@@ -1229,7 +1232,7 @@ function HelpView({ onBack }: { onBack: () => void }) {
   );
 }
 
-function TrendsView({ subjects, onBack }: { subjects: Subject[], onBack: () => void }) {
+function TrendsView({ subjects, onBack, onShowHelp }: { subjects: Subject[], onBack: () => void, onShowHelp: () => void }) {
   // Calculate trend data: array of {date, predictedGrade, subjectGrades: {[subjectName]: grade}}
   const trendData = calculateTrendData(subjects);
 
@@ -1263,9 +1266,14 @@ function TrendsView({ subjects, onBack }: { subjects: Subject[], onBack: () => v
       {/* Header */}
       <header className="bg-background border-b">
         <div className="container mx-auto px-6 py-6 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <img src="/iblogo.png" alt="IB" className="h-8 w-auto" />
-            <h1 className="font-bold text-2xl tracking-tight text-foreground">Tracker</h1>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <img src="/iblogo.png" alt="IB" className="h-8 w-auto" />
+              <h1 className="font-bold text-2xl tracking-tight text-foreground">Tracker</h1>
+            </div>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onShowHelp}>
+              <Info className="h-4 w-4" />
+            </Button>
           </div>
           <Button variant="outline" onClick={onBack}>
             <HomeIcon className="mr-2 h-4 w-4" />
