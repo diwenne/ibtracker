@@ -1,6 +1,6 @@
 import { createClient } from './supabase';
 import { SupabaseClient } from '@supabase/supabase-js';
-import { Subject, Assessment, SubjectType } from './types';
+import { Subject, Assessment, SubjectType, Category } from './types';
 import { Subject as DBSubject, Assessment as DBAssessment } from '@/types/database';
 
 // Helper function to add timeout to promises
@@ -18,26 +18,14 @@ export const api = {
         console.log('fetchSubjects: Using provided client or creating new one...');
         const supabase = client || createClient();
 
-        // If client was provided, we assume it's already configured/authenticated
-        // But we still need to check if there's a user for RLS? 
-        // Actually, let's just try to query. If RLS fails, it returns error.
-        // However, the original code returned [] if no session.
-
         try {
-            // Only check session if we created a new client OR if we want to be sure
-            // But checking session is what caused the timeout.
-            // Let's try to get session ONLY if we don't have a client passed in?
-            // No, the client passed in is just the object.
-
-            // Let's use getUser instead of getSession - it's lighter? No.
-            // Let's just trust the query.
-
             console.log('fetchSubjects: Querying subjects...');
             const { data, error } = await supabase
                 .from('subjects')
                 .select(`
         *,
-        assessments (*)
+        assessments (*),
+        categories (*)
       `)
                 .order('created_at', { ascending: true });
 
@@ -53,6 +41,14 @@ export const api = {
                 id: sub.id,
                 name: sub.name,
                 type: sub.type as SubjectType,
+                aiPredictedGrade: sub.ai_predicted_grade,
+                aiExplanation: sub.ai_explanation,
+                predictionDirty: sub.prediction_dirty,
+                categories: (sub.categories || []).map((cat: any) => ({
+                    id: cat.id,
+                    name: cat.name,
+                    rawWeight: cat.raw_weight
+                })),
                 assessments: (sub.assessments || []).map((assess: any) => ({
                     id: assess.id,
                     name: assess.name,
@@ -61,6 +57,7 @@ export const api = {
                     rawPercent: assess.raw_percent,
                     date: assess.date,
                     notes: assess.notes,
+                    categoryId: assess.category_id
                 })).sort((a: Assessment, b: Assessment) => new Date(b.date).getTime() - new Date(a.date).getTime())
             }));
         } catch (err) {
@@ -81,7 +78,7 @@ export const api = {
                 user_id: session.user.id,
                 name,
                 type,
-                target_grade: 7 // Default, not really used in UI yet
+                target_grade: 7
             })
             .select()
             .single();
@@ -95,7 +92,8 @@ export const api = {
             id: data.id,
             name: data.name,
             type: data.type as SubjectType,
-            assessments: []
+            assessments: [],
+            categories: []
         };
     },
 
@@ -117,7 +115,7 @@ export const api = {
         const supabase = client || createClient();
         const { data, error } = await supabase
             .from('subjects')
-            .update({ name, type })
+            .update({ name, type, prediction_dirty: true }) // Mark dirty on update
             .eq('id', id)
             .select()
             .single();
@@ -131,7 +129,8 @@ export const api = {
             id: data.id,
             name: data.name,
             type: data.type as SubjectType,
-            assessments: [] // We don't need to return assessments here as we are just updating the subject details
+            assessments: [], // We don't need to return assessments here
+            categories: []
         };
     },
 
@@ -152,6 +151,7 @@ export const api = {
                 raw_percent: assessment.rawPercent,
                 date: assessment.date,
                 notes: assessment.notes,
+                category_id: assessment.categoryId
             })
             .select()
             .single();
@@ -161,6 +161,9 @@ export const api = {
             return null;
         }
 
+        // Mark subject as dirty
+        await supabase.from('subjects').update({ prediction_dirty: true }).eq('id', subjectId);
+
         return {
             id: data.id,
             name: data.name,
@@ -169,11 +172,15 @@ export const api = {
             rawPercent: data.raw_percent,
             date: data.date,
             notes: data.notes,
+            categoryId: data.category_id
         };
     },
 
     updateAssessment: async (id: string, assessment: Omit<Assessment, 'id'>, client?: SupabaseClient): Promise<Assessment | null> => {
         const supabase = client || createClient();
+
+        // Get subject_id first to mark dirty
+        const { data: existing } = await supabase.from('assessments').select('subject_id').eq('id', id).single();
 
         const { data, error } = await supabase
             .from('assessments')
@@ -184,6 +191,7 @@ export const api = {
                 raw_percent: assessment.rawPercent,
                 date: assessment.date,
                 notes: assessment.notes,
+                category_id: assessment.categoryId
             })
             .eq('id', id)
             .select()
@@ -194,6 +202,10 @@ export const api = {
             return null;
         }
 
+        if (existing) {
+            await supabase.from('subjects').update({ prediction_dirty: true }).eq('id', existing.subject_id);
+        }
+
         return {
             id: data.id,
             name: data.name,
@@ -202,11 +214,16 @@ export const api = {
             rawPercent: data.raw_percent,
             date: data.date,
             notes: data.notes,
+            categoryId: data.category_id
         };
     },
 
     deleteAssessment: async (id: string, client?: SupabaseClient): Promise<boolean> => {
         const supabase = client || createClient();
+
+        // Get subject_id first to mark dirty
+        const { data: existing } = await supabase.from('assessments').select('subject_id').eq('id', id).single();
+
         const { error } = await supabase
             .from('assessments')
             .delete()
@@ -216,6 +233,116 @@ export const api = {
             console.error('Error deleting assessment:', error);
             return false;
         }
+
+        if (existing) {
+            await supabase.from('subjects').update({ prediction_dirty: true }).eq('id', existing.subject_id);
+        }
+
         return true;
+    },
+
+    // Category Methods
+
+    createCategory: async (subjectId: string, name: string, rawWeight: number, client?: SupabaseClient): Promise<Category | null> => {
+        const supabase = client || createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (!session) return null;
+
+        const { data, error } = await supabase
+            .from('categories')
+            .insert({
+                subject_id: subjectId,
+                user_id: session.user.id,
+                name,
+                raw_weight: rawWeight
+            })
+            .select()
+            .single();
+
+        if (error) {
+            console.error('Error creating category:', error);
+            return null;
+        }
+
+        await supabase.from('subjects').update({ prediction_dirty: true }).eq('id', subjectId);
+
+        return {
+            id: data.id,
+            name: data.name,
+            rawWeight: data.raw_weight
+        };
+    },
+
+    updateCategory: async (id: string, name: string, rawWeight: number, client?: SupabaseClient): Promise<Category | null> => {
+        const supabase = client || createClient();
+
+        // Get subject_id first
+        const { data: existing } = await supabase.from('categories').select('subject_id').eq('id', id).single();
+
+        const { data, error } = await supabase
+            .from('categories')
+            .update({ name, raw_weight: rawWeight })
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error) {
+            console.error('Error updating category:', error);
+            return null;
+        }
+
+        if (existing) {
+            await supabase.from('subjects').update({ prediction_dirty: true }).eq('id', existing.subject_id);
+        }
+
+        return {
+            id: data.id,
+            name: data.name,
+            rawWeight: data.raw_weight
+        };
+    },
+
+    deleteCategory: async (id: string, client?: SupabaseClient): Promise<boolean> => {
+        const supabase = client || createClient();
+
+        const { data: existing } = await supabase.from('categories').select('subject_id').eq('id', id).single();
+
+        const { error } = await supabase
+            .from('categories')
+            .delete()
+            .eq('id', id);
+
+        if (error) {
+            console.error('Error deleting category:', error);
+            return false;
+        }
+
+        if (existing) {
+            await supabase.from('subjects').update({ prediction_dirty: true }).eq('id', existing.subject_id);
+        }
+
+        return true;
+    },
+
+    predictGrade: async (subject: Subject, assessments: Assessment[], categories: Category[]) => {
+        try {
+            const response = await fetch('/api/predict-grade', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ subject, assessments, categories }),
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to fetch prediction');
+            }
+
+            return await response.json();
+        } catch (error) {
+            console.error('Error predicting grade:', error);
+            return null;
+        }
     }
 };

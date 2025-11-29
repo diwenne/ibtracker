@@ -13,6 +13,8 @@ import { Subject, Assessment, SubjectType, calculatePercentage, getGrade, calcul
 import { api } from "@/lib/api";
 import { createClient } from "@/lib/supabase";
 import Auth from "@/components/Auth";
+import { ManageCategoriesDialog } from "@/components/ManageCategoriesDialog";
+import { calculateLocalPrediction } from "@/lib/prediction";
 
 // Parse MM/DD/YYYY format to YYYY-MM-DD
 function parseDateInput(input: string): { valid: boolean; date: string; error?: string } {
@@ -125,6 +127,9 @@ export default function Home() {
   const initialLoadComplete = useRef(false);
 
   const supabase = createClient();
+
+  const [manageCategoriesOpen, setManageCategoriesOpen] = useState(false);
+  const [selectedSubjectForCategories, setSelectedSubjectForCategories] = useState<Subject | null>(null);
 
   const loadSubjects = async () => {
     console.log('loadSubjects: Starting...');
@@ -438,6 +443,11 @@ export default function Home() {
                   onUpdateAssessment={updateAssessment}
                   onDeleteAssessment={deleteAssessment}
                   onUpdateSubject={updateSubject}
+                  onManageCategories={(subject) => {
+                    setSelectedSubjectForCategories(subject);
+                    setManageCategoriesOpen(true);
+                  }}
+                  onRefresh={loadSubjects}
                 />
               );
             })}
@@ -446,6 +456,15 @@ export default function Home() {
       </main>
 
       <Footer />
+
+      {selectedSubjectForCategories && (
+        <ManageCategoriesDialog
+          subject={selectedSubjectForCategories}
+          open={manageCategoriesOpen}
+          onOpenChange={setManageCategoriesOpen}
+          onUpdate={loadSubjects}
+        />
+      )}
     </div>
   );
 }
@@ -457,7 +476,9 @@ function SubjectGradeCard({
   onAddAssessment,
   onUpdateAssessment,
   onDeleteAssessment,
-  onUpdateSubject
+  onUpdateSubject,
+  onManageCategories,
+  onRefresh
 }: {
   subject: Subject;
   grade: number;
@@ -466,10 +487,34 @@ function SubjectGradeCard({
   onUpdateAssessment: (sid: string, aid: string, assessment: Omit<Assessment, 'id'>) => void;
   onDeleteAssessment: (sid: string, aid: string) => void;
   onUpdateSubject: (id: string, name: string, type: SubjectType) => void;
+  onManageCategories: (subject: Subject) => void;
+  onRefresh: () => void;
 }) {
   const [showDetails, setShowDetails] = useState(false);
   const [editingAssessment, setEditingAssessment] = useState<Assessment | null>(null);
   const [isEditingSubject, setIsEditingSubject] = useState(false);
+  const [isPredicting, setIsPredicting] = useState(false);
+
+  useEffect(() => {
+    if (subject.predictionDirty && !isPredicting && subject.assessments.length > 0) {
+      setIsPredicting(true);
+      api.predictGrade(subject, subject.assessments, subject.categories || [])
+        .then((result) => {
+          if (result) {
+            onRefresh();
+          }
+        })
+        .finally(() => setIsPredicting(false));
+    }
+  }, [subject.predictionDirty, subject.id]);
+
+  // Calculate local prediction
+  const localPrediction = calculateLocalPrediction(subject, subject.assessments, subject.categories || []);
+
+  // Determine which prediction to show
+  const displayGrade = subject.aiPredictedGrade || localPrediction?.grade || grade;
+  const isAi = !!subject.aiPredictedGrade;
+  const predictionDetails = subject.aiExplanation || localPrediction?.details;
 
   // Determine color based on grade quality
   const getGradeColor = (grade: number) => {
@@ -487,15 +532,17 @@ function SubjectGradeCard({
         <div className="group cursor-pointer transition-all hover:opacity-80">
           {/* Just the number and subject name - transparent, minimal */}
           <div className="flex flex-col items-center space-y-1.5">
-            <span className={`text-4xl font-semibold ${subject.assessments.length === 0 ? 'text-muted-foreground/60' : getGradeColor(grade)}`}>
-              {subject.assessments.length === 0 ? 'N/A' : grade}
+            <span className={`text-4xl font-semibold ${subject.assessments.length === 0 ? 'text-muted-foreground/60' : getGradeColor(displayGrade)}`}>
+              {subject.assessments.length === 0 ? 'N/A' : displayGrade}
             </span>
             <div className="text-center">
               <p className="text-sm font-medium text-foreground/80">{subject.name}</p>
               <p className="text-xs text-muted-foreground/60">
                 {subject.type}{subject.assessments.length === 0 ? ' • No data' : percentage > 0 ? ` • ${percentage.toFixed(0)}%` : ''}
+                {isAi && ' • AI'}
               </p>
             </div>
+            {isPredicting && <span className="text-[10px] text-muted-foreground animate-pulse">Updating...</span>}
           </div>
         </div>
       </DialogTrigger>
@@ -515,19 +562,39 @@ function SubjectGradeCard({
               </Button>
             </DialogTitle>
           </div>
-          <DialogDescription>
-            {subject.assessments.length === 0 ? (
-              'No assessments yet'
-            ) : (
-              `Current Grade: ${grade} • ${percentage.toFixed(1)}%`
-            )}
+          <DialogDescription asChild>
+            <div className="text-sm text-muted-foreground">
+              {subject.assessments.length === 0 ? (
+                'No assessments yet'
+              ) : (
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <span>Predicted Grade: <strong>{displayGrade}</strong> {percentage > 0 && `(${percentage.toFixed(1)}%)`}</span>
+                    {isAi && <span className="text-[10px] bg-secondary px-1.5 py-0.5 rounded">AI</span>}
+                  </div>
+                  {predictionDetails && (
+                    <span className="text-xs text-muted-foreground">{predictionDetails}</span>
+                  )}
+                </div>
+              )}
+            </div>
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
           <div className="flex justify-between items-center">
             <h3 className="font-medium">Assessments</h3>
-            <AddAssessmentDialog subject={subject} onAdd={onAddAssessment} />
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onManageCategories(subject)}
+              >
+                <TrendingUp className="h-3 w-3 mr-2" />
+                Categories
+              </Button>
+              <AddAssessmentDialog subject={subject} onAdd={onAddAssessment} />
+            </div>
           </div>
 
           {subject.assessments.length === 0 ? (
@@ -540,7 +607,7 @@ function SubjectGradeCard({
                 const displayGrade = assessment.ibGrade;
                 const displayRawGrade = assessment.rawGrade || '';
 
-                if (assessment.rawPercent !== undefined) {
+                if (assessment.rawPercent !== undefined && assessment.rawPercent !== null) {
                   displayPercent = assessment.rawPercent;
                 } else if (subject.type === 'SL' && assessment.rawGrade) {
                   // Only auto-calculate percentage from raw grade for SL (HL is scaled)
@@ -556,7 +623,17 @@ function SubjectGradeCard({
                     className="flex items-center justify-between p-3 rounded-lg bg-accent/30 hover:bg-accent/50 transition-colors cursor-pointer"
                     onClick={() => setEditingAssessment(assessment)}
                   >
-                    <span className="font-medium">{assessment.name}</span>
+                    <div>
+                      <div className="font-medium">{assessment.name}</div>
+                      <div className="text-xs text-muted-foreground flex items-center gap-2">
+                        <span>{formatDateForDisplay(assessment.date)}</span>
+                        {assessment.categoryId && (
+                          <span className="bg-secondary px-1.5 rounded text-[10px]">
+                            {subject.categories?.find(c => c.id === assessment.categoryId)?.name}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                     <div className="flex items-center gap-4">
                       {displayRawGrade && (
                         <span className="text-sm text-muted-foreground">
@@ -677,149 +754,194 @@ function AddAssessmentDialog({ subject, onAdd }: { subject: Subject, onAdd: (sid
   const [ibGrade, setIbGrade] = useState("");
   const [rawGrade, setRawGrade] = useState("");
   const [rawPercent, setRawPercent] = useState("");
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState("");
-  const today = new Date();
-  const [date, setDate] = useState(`${today.getMonth() + 1}/${today.getDate()}/${today.getFullYear()}`);
-  const [dateError, setDateError] = useState("");
+  const [categoryId, setCategoryId] = useState<string>("uncategorized");
   const [open, setOpen] = useState(false);
 
-  // Auto-fill IB grade from percentage for SL classes
+  // Reset form when dialog opens
+  useEffect(() => {
+    if (open) {
+      setName("");
+      setIbGrade("");
+      setRawGrade("");
+      setRawPercent("");
+      setDate(new Date().toISOString().split('T')[0]);
+      setNotes("");
+      setCategoryId("uncategorized");
+    }
+  }, [open]);
+
   const handlePercentChange = (value: string) => {
     setRawPercent(value);
 
-    // Only auto-fill for SL classes and when ibGrade is empty
+    // Auto-fill IB grade for SL subjects if empty
     if (subject.type === 'SL' && value && !ibGrade) {
-      const percent = parseFloat(value);
-      if (!isNaN(percent)) {
-        const calculatedGrade = percentToIBGrade(percent, subject.type);
-        setIbGrade(calculatedGrade.toString());
+      const num = parseFloat(value);
+      if (!isNaN(num)) {
+        // Simple estimation
+        if (num >= 80) setIbGrade("7");
+        else if (num >= 70) setIbGrade("6");
+        else if (num >= 60) setIbGrade("5");
+        else if (num >= 50) setIbGrade("4");
+        else if (num >= 40) setIbGrade("3");
+        else if (num >= 30) setIbGrade("2");
+        else setIbGrade("1");
       }
     }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !ibGrade) return;
 
-    // Validate and parse date
-    const parsedDate = parseDateInput(date);
-    if (!parsedDate.valid) {
-      setDateError(parsedDate.error || 'Invalid date');
+    // Validation
+    if (!name) return;
+
+    // For HL, IB Grade is preferred. For SL, either is fine.
+    // But we need at least one numeric value
+    if (!ibGrade && !rawPercent && !rawGrade) {
+      alert("Please enter at least an IB Grade, Raw Score, or Percentage.");
       return;
     }
 
-    const assessment: Omit<Assessment, 'id'> = {
+    onAdd(subject.id, {
       name,
-      ibGrade: parseInt(ibGrade),
-      date: parsedDate.date,
-    };
-
-    // Handle raw grade (e.g., "31/32")
-    if (rawGrade) {
-      assessment.rawGrade = rawGrade;
-
-      // Auto-calculate percentage for SL only (HL is scaled, so don't auto-calculate)
-      if (subject.type === 'SL' && !rawPercent) {
-        const parsed = parseRawGrade(rawGrade);
-        if (parsed) {
-          assessment.rawPercent = calculateRawPercent(parsed.score, parsed.total);
-        }
-      }
-    }
-
-    // Handle raw percent
-    if (rawPercent) {
-      assessment.rawPercent = parseFloat(rawPercent);
-    }
-
-    // Handle notes
-    if (notes) {
-      assessment.notes = notes;
-    }
-
-    onAdd(subject.id, assessment);
-    setName("");
-    setIbGrade("");
-    setRawGrade("");
-    setRawPercent("");
-    setNotes("");
-    const resetToday = new Date();
-    setDate(`${resetToday.getMonth() + 1}/${resetToday.getDate()}/${resetToday.getFullYear()}`);
-    setDateError("");
+      ibGrade: ibGrade ? parseInt(ibGrade) : null,
+      rawGrade: rawGrade || null,
+      rawPercent: rawPercent ? parseFloat(rawPercent) : null,
+      date,
+      notes: notes || null,
+      categoryId: categoryId === "uncategorized" ? null : categoryId
+    });
     setOpen(false);
   };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" className="gap-2">
-          <Plus className="h-3 w-3" /> Add Assessment
+        <Button size="sm" className="flex-1">
+          <Plus className="h-4 w-4 mr-2" />
+          Add Grade
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Add Assessment</DialogTitle>
+          <DialogTitle>Add Assessment for {subject.name}</DialogTitle>
           <DialogDescription>
-            Name and IB grade are required.
+            Enter the details of your assessment.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 pt-4">
-          <div className="space-y-2">
-            <Label htmlFor="assign-name">Assessment Name</Label>
-            <Input id="assign-name" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Unit Test 1" required />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="ibGrade">IB Grade</Label>
-            <Select value={ibGrade} onValueChange={setIbGrade} required>
-              <SelectTrigger>
-                <SelectValue placeholder="Select grade" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="7">7</SelectItem>
-                <SelectItem value="6">6</SelectItem>
-                <SelectItem value="5">5</SelectItem>
-                <SelectItem value="4">4</SelectItem>
-                <SelectItem value="3">3</SelectItem>
-                <SelectItem value="2">2</SelectItem>
-                <SelectItem value="1">1</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="rawGrade" className="text-muted-foreground">Raw Grade (optional)</Label>
-            <Input id="rawGrade" value={rawGrade} onChange={e => setRawGrade(e.target.value)} placeholder="e.g. 31/32" />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="rawPercent" className="text-muted-foreground">Percentage (optional)</Label>
-            <Input id="rawPercent" type="number" step="any" value={rawPercent} onChange={e => handlePercentChange(e.target.value)} placeholder="96.8" />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="date">Date (MM/DD/YYYY)</Label>
+        <form onSubmit={handleSubmit} className="space-y-4 py-4">
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="name" className="text-right">
+              Name
+            </Label>
             <Input
-              id="date"
-              type="text"
-              value={date}
-              onChange={e => {
-                setDate(e.target.value);
-                setDateError(''); // Clear error on change
-              }}
-              placeholder="11/27/2024"
+              id="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="col-span-3"
+              placeholder="e.g. Unit 1 Test"
               required
             />
-            {dateError && <p className="text-sm text-red-500">{dateError}</p>}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="notes" className="text-muted-foreground">Notes (optional)</Label>
-            <Input id="notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Add any notes about this assessment..." />
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="category" className="text-right">
+              Category
+            </Label>
+            <div className="col-span-3">
+              <Select value={categoryId} onValueChange={setCategoryId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="uncategorized">Uncategorized</SelectItem>
+                  {subject.categories?.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="ibGrade" className="text-right">
+              IB Grade
+            </Label>
+            <div className="col-span-3">
+              <Input
+                id="ibGrade"
+                type="number"
+                min="1"
+                max="7"
+                value={ibGrade}
+                onChange={(e) => setIbGrade(e.target.value)}
+                placeholder="1-7"
+              />
+              <p className="text-[10px] text-muted-foreground mt-1">
+                {subject.type === 'HL' ? 'Required for HL' : 'Optional if % provided'}
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="rawGrade" className="text-right">
+              Raw Score
+            </Label>
+            <Input
+              id="rawGrade"
+              value={rawGrade}
+              onChange={(e) => setRawGrade(e.target.value)}
+              className="col-span-3"
+              placeholder="e.g. 31/32"
+            />
+          </div>
+
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="rawPercent" className="text-right">
+              Percentage
+            </Label>
+            <Input
+              id="rawPercent"
+              type="number"
+              step="any"
+              value={rawPercent}
+              onChange={(e) => handlePercentChange(e.target.value)}
+              className="col-span-3"
+              placeholder="e.g. 96.8"
+            />
+          </div>
+
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="date" className="text-right">
+              Date
+            </Label>
+            <Input
+              id="date"
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="col-span-3"
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="notes" className="text-right">
+              Notes
+            </Label>
+            <Input
+              id="notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="col-span-3"
+              placeholder="Add any notes..."
+            />
           </div>
 
           <DialogFooter>
-            <Button type="submit" disabled={!name || !ibGrade}>Add Assessment</Button>
+            <Button type="submit">Add Assessment</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -841,137 +963,171 @@ function EditAssessmentDialog({
   onUpdate: (assessment: Omit<Assessment, 'id'>) => void;
 }) {
   const [name, setName] = useState(assessment.name);
-  const [ibGrade, setIbGrade] = useState(assessment.ibGrade?.toString() ?? "4");
-  const [rawGrade, setRawGrade] = useState(assessment.rawGrade ?? "");
-  const [rawPercent, setRawPercent] = useState(assessment.rawPercent?.toString() ?? "");
-  const [notes, setNotes] = useState(assessment.notes ?? "");
-  const [date, setDate] = useState(formatDateForDisplay(assessment.date));
-  const [dateError, setDateError] = useState("");
+  const [ibGrade, setIbGrade] = useState(assessment.ibGrade?.toString() || "");
+  const [rawGrade, setRawGrade] = useState(assessment.rawGrade || "");
+  const [rawPercent, setRawPercent] = useState(assessment.rawPercent?.toString() || "");
+  const [date, setDate] = useState(assessment.date);
+  const [notes, setNotes] = useState(assessment.notes || "");
+  const [categoryId, setCategoryId] = useState<string>(assessment.categoryId || "uncategorized");
 
-  // Auto-fill IB grade from percentage for SL classes
   const handlePercentChange = (value: string) => {
     setRawPercent(value);
 
-    // Only auto-fill for SL classes
-    if (subject.type === 'SL' && value) {
-      const percent = parseFloat(value);
-      if (!isNaN(percent)) {
-        const calculatedGrade = percentToIBGrade(percent, subject.type);
-        setIbGrade(calculatedGrade.toString());
+    // Auto-fill IB grade for SL subjects if empty
+    if (subject.type === 'SL' && value && !ibGrade) {
+      const num = parseFloat(value);
+      if (!isNaN(num)) {
+        // Simple estimation
+        if (num >= 80) setIbGrade("7");
+        else if (num >= 70) setIbGrade("6");
+        else if (num >= 60) setIbGrade("5");
+        else if (num >= 50) setIbGrade("4");
+        else if (num >= 40) setIbGrade("3");
+        else if (num >= 30) setIbGrade("2");
+        else setIbGrade("1");
       }
     }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !ibGrade) return;
 
-    // Validate and parse date
-    const parsedDate = parseDateInput(date);
-    if (!parsedDate.valid) {
-      setDateError(parsedDate.error || 'Invalid date');
+    // Validation
+    if (!name) return;
+
+    if (!ibGrade && !rawPercent && !rawGrade) {
+      alert("Please enter at least an IB Grade, Raw Score, or Percentage.");
       return;
     }
 
-    const updatedAssessment: Omit<Assessment, 'id'> = {
+    onUpdate({
       name,
-      ibGrade: parseInt(ibGrade),
-      date: parsedDate.date,
-    };
-
-    // Handle raw grade (e.g., "31/32")
-    if (rawGrade) {
-      updatedAssessment.rawGrade = rawGrade;
-
-      // Auto-calculate percentage for SL only (HL is scaled, so don't auto-calculate)
-      if (subject.type === 'SL' && !rawPercent) {
-        const parsed = parseRawGrade(rawGrade);
-        if (parsed) {
-          updatedAssessment.rawPercent = calculateRawPercent(parsed.score, parsed.total);
-        }
-      }
-    }
-
-    // Handle raw percent
-    if (rawPercent) {
-      updatedAssessment.rawPercent = parseFloat(rawPercent);
-    }
-
-    // Handle notes
-    if (notes) {
-      updatedAssessment.notes = notes;
-    }
-
-    onUpdate(updatedAssessment);
+      ibGrade: ibGrade ? parseInt(ibGrade) : null,
+      rawGrade: rawGrade || null,
+      rawPercent: rawPercent ? parseFloat(rawPercent) : null,
+      date,
+      notes: notes || null,
+      categoryId: categoryId === "uncategorized" ? null : categoryId
+    });
     onOpenChange(false);
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Edit Assessment</DialogTitle>
           <DialogDescription>
-            Name and IB grade are required.
+            Update the details of your assessment.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 pt-4">
-          <div className="space-y-2">
-            <Label htmlFor="edit-name">Assessment Name</Label>
-            <Input id="edit-name" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Unit Test 1" required />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="edit-ibGrade">IB Grade</Label>
-            <Select value={ibGrade} onValueChange={setIbGrade} required>
-              <SelectTrigger>
-                <SelectValue placeholder="Select grade" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="7">7</SelectItem>
-                <SelectItem value="6">6</SelectItem>
-                <SelectItem value="5">5</SelectItem>
-                <SelectItem value="4">4</SelectItem>
-                <SelectItem value="3">3</SelectItem>
-                <SelectItem value="2">2</SelectItem>
-                <SelectItem value="1">1</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="edit-rawGrade" className="text-muted-foreground">Raw Grade (optional)</Label>
-            <Input id="edit-rawGrade" value={rawGrade} onChange={e => setRawGrade(e.target.value)} placeholder="e.g. 31/32" />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="edit-rawPercent" className="text-muted-foreground">Percentage (optional)</Label>
-            <Input id="edit-rawPercent" type="number" step="any" value={rawPercent} onChange={e => handlePercentChange(e.target.value)} placeholder="96.8" />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="edit-date">Date (MM/DD/YYYY)</Label>
+        <form onSubmit={handleSubmit} className="space-y-4 py-4">
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="edit-name" className="text-right">
+              Name
+            </Label>
             <Input
-              id="edit-date"
-              type="text"
-              value={date}
-              onChange={e => {
-                setDate(e.target.value);
-                setDateError(''); // Clear error on change
-              }}
-              placeholder="11/27/2024"
+              id="edit-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="col-span-3"
               required
             />
-            {dateError && <p className="text-sm text-red-500">{dateError}</p>}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="edit-notes" className="text-muted-foreground">Notes (optional)</Label>
-            <Input id="edit-notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Add any notes about this assessment..." />
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="edit-category" className="text-right">
+              Category
+            </Label>
+            <div className="col-span-3">
+              <Select value={categoryId} onValueChange={setCategoryId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="uncategorized">Uncategorized</SelectItem>
+                  {subject.categories?.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="edit-ibGrade" className="text-right">
+              IB Grade
+            </Label>
+            <div className="col-span-3">
+              <Input
+                id="edit-ibGrade"
+                type="number"
+                min="1"
+                max="7"
+                value={ibGrade}
+                onChange={(e) => setIbGrade(e.target.value)}
+                placeholder="1-7"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="edit-rawGrade" className="text-right">
+              Raw Score
+            </Label>
+            <Input
+              id="edit-rawGrade"
+              value={rawGrade}
+              onChange={(e) => setRawGrade(e.target.value)}
+              className="col-span-3"
+              placeholder="e.g. 31/32"
+            />
+          </div>
+
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="edit-rawPercent" className="text-right">
+              Percentage
+            </Label>
+            <Input
+              id="edit-rawPercent"
+              type="number"
+              step="any"
+              value={rawPercent}
+              onChange={(e) => handlePercentChange(e.target.value)}
+              className="col-span-3"
+              placeholder="e.g. 96.8"
+            />
+          </div>
+
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="edit-date" className="text-right">
+              Date
+            </Label>
+            <Input
+              id="edit-date"
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="col-span-3"
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="edit-notes" className="text-right">
+              Notes
+            </Label>
+            <Input
+              id="edit-notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="col-span-3"
+              placeholder="Add any notes..."
+            />
           </div>
 
           <DialogFooter>
-            <Button type="submit" disabled={!name || !ibGrade}>Save Changes</Button>
+            <Button type="submit">Save Changes</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -1161,31 +1317,35 @@ function HelpView({ onBack }: { onBack: () => void }) {
               <AccordionContent>
                 <div className="space-y-3 text-muted-foreground">
                   <p>
-                    IB Tracker calculates your predicted grade for each subject based on your assessment history:
+                    Your predicted grades in this app are estimates powered by weighted performance and AI. They do not replace your teacher’s official IB predicted grades.
                   </p>
-                  <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+                  <div className="bg-muted/50 rounded-lg p-4 space-y-4">
                     <div>
-                      <h4 className="font-semibold text-foreground mb-2">Subject Predicted Grade</h4>
+                      <h4 className="font-semibold text-foreground mb-1">1️⃣ Weighted Assessments</h4>
                       <p className="text-sm">
-                        The average of all IB grades you've entered for that subject, rounded to the nearest whole number (1-7).
+                        Big exams and IAs matter more than quizzes. You can assign categories (e.g., Exam, Test, Quiz) to assessments, and the app will weight them accordingly. Assessment weights always add up to 100%.
                       </p>
                     </div>
                     <div>
-                      <h4 className="font-semibold text-foreground mb-2">Total Predicted Score</h4>
+                      <h4 className="font-semibold text-foreground mb-1">2️⃣ HL vs SL Differences</h4>
+                      <ul className="list-disc list-inside text-sm ml-1">
+                        <li><strong>HL:</strong> Predictions emphasize improvement trends and scaling. IB Grades are the primary input.</li>
+                        <li><strong>SL:</strong> Predictions rely more on weighted raw percentages converted to IB bands.</li>
+                      </ul>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-foreground mb-1">3️⃣ AI Trend Analysis</h4>
                       <p className="text-sm">
-                        The sum of all 6 subject predicted grades, displayed on your dashboard as a number out of 42.
+                        AI reviews your results, weights, and notes to make predictions similar to teacher judgment. It considers improvement over time and anomalies explained in your notes.
                       </p>
                     </div>
                     <div>
-                      <h4 className="font-semibold text-foreground mb-2">Percentage Display</h4>
+                      <h4 className="font-semibold text-foreground mb-1">4️⃣ Automatic Updates & Fallback</h4>
                       <p className="text-sm">
-                        The percentage shown for each subject is calculated from your raw grades or percentages, using the appropriate grade boundaries for HL or SL.
+                        Predictions refresh when new assessments are added. If AI is unavailable, a weighted mathematical prediction is used as a fallback.
                       </p>
                     </div>
                   </div>
-                  <p className="text-sm">
-                    💡 Tip: Add more assessments over time to get a more accurate prediction of your final IB grade!
-                  </p>
                 </div>
               </AccordionContent>
             </AccordionItem>
@@ -1393,12 +1553,15 @@ function calculateTrendData(subjects: Subject[]) {
       });
 
       if (assessmentsUpToDate.length > 0) {
-        const avg = Math.round(
-          assessmentsUpToDate.reduce((sum, a) => sum + a.ibGrade, 0) / assessmentsUpToDate.length
-        );
-        subjectGrades[subject.name] = avg;
-        totalGrade += avg;
-        subjectsWithGrades++;
+        const validAssessments = assessmentsUpToDate.filter(a => a.ibGrade !== null && a.ibGrade !== undefined);
+        if (validAssessments.length > 0) {
+          const avg = Math.round(
+            validAssessments.reduce((sum, a) => sum + (a.ibGrade || 0), 0) / validAssessments.length
+          );
+          subjectGrades[subject.name] = avg;
+          totalGrade += avg;
+          subjectsWithGrades++;
+        }
       }
     });
 

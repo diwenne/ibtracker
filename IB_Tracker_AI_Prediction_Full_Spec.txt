@@ -1,0 +1,202 @@
+AI-Based IB Predicted Grades Implementation Specification (Flexible Guidance Version)
+====================================================================
+
+This document describes how to implement AI-enhanced IB predicted grades into the IB Tracker app (ibtracker.stemsf.org). The goal is to make predicted grades more realistic by considering HL vs SL differences, performance trends, assessment weighting, and contextual notes. Some details are intentionally flexible so developers can apply judgment during implementation.
+
+------------------------------------------------------------
+1. Project Goals
+------------------------------------------------------------
+• Use AI (Gemini) to estimate predicted IB grades like a teacher would.
+• Differentiate HL (trend-based) vs SL (percentage-based).
+• Introduce weighted assessment categories with normalized weights per subject.
+• Automatically trigger AI updates when predictions become outdated.
+• Improve user input experience with clearer rules for HL vs SL.
+• Add informative UI explaining how predictions work.
+• Maintain a mathematical fallback prediction if AI is unavailable.
+
+------------------------------------------------------------
+2. Data Model Updates (Supabase)
+------------------------------------------------------------
+2.1 Add Categories Table
+Fields:
+- id (PK)
+- user_id (FK)
+- name (e.g. Exam, Test, IA, Quiz)
+- raw_weight (float)
+- created_at, updated_at
+
+2.2 Modify Assessments Table
+Add:
+- category_id (nullable FK)
+
+Row-Level Security: user_id-based access, consistent with existing data.
+
+------------------------------------------------------------
+3. Weighting Logic (Normalized per Subject)
+------------------------------------------------------------
+• Each subject must have total assessment weight = 1.0.
+• User sets category raw weights → app auto-normalizes.
+
+Normalization:
+normalized_category_weight[c] = raw_weight[c] / sum(raw_weights)
+
+Assessment weight:
+assessment_weight[i] = normalized_category_weight[c] / (# assessments in that category)
+
+Fallbacks:
+• If no categories used → equal weight per assessment.
+• Uncategorized assessments may form a default category like “Other”.
+
+Default Raw Weights (suggested):
+• Exams/Mocks: 2
+• IA: 1
+• Major Tests: 1
+• Quizzes/Homework: 0.5
+
+------------------------------------------------------------
+4. HL vs SL Assessment Input Rules
+------------------------------------------------------------
+HL Subjects:
+• IB Grade required
+• Raw percentage optional
+• IB grade is primary numeric representation
+
+SL Subjects:
+• Must include either raw score/percentage OR IB Grade
+• Prefer raw percentage → convert to IB via SL boundaries
+• If only IB Grade → derive approximate % (midpoint of band)
+
+Canonical Score for calculations:
+• HL: canonical_score = ib_grade
+• SL: canonical_score = raw_percentage if possible, otherwise ib_grade
+
+------------------------------------------------------------
+5. Local (Non-AI) Weighted Calculations
+------------------------------------------------------------
+HL:
+weighted_avg_ib = Σ(ib_grade[i] * weight[i])
+predicted_local_ib = round(weighted_avg_ib)
+
+SL:
+weighted_avg_pct = Σ(raw_percentage[i] * weight[i])
+convert weighted_avg_pct → IB grade band
+
+Use these predictions as:
+• Fallback if AI fails
+• Consistency check
+• Additional input to Gemini prompt
+
+------------------------------------------------------------
+6. AI Prediction Workflow
+------------------------------------------------------------
+Per Subject Prediction:
+• Construct a compact prompt containing:
+  - Subject name and level (HL or SL)
+  - Each assessment: name, date, ib_grade, raw %, category, normalized weight, notes (trimmed)
+  - Local mathematical baseline (optional but helpful)
+
+HL Guidance for AI:
+• Focus on trends over time
+• Later + high-weight assessments influence more
+• Raw % less meaningful due to HL scaling
+
+SL Guidance for AI:
+• Weighted average % is primary
+• Trend adjustments are smaller
+
+AI Output Format:
+Predicted Grade: X
+Explanation: short statement
+
+------------------------------------------------------------
+7. Cost Optimization + Automatic Triggering
+------------------------------------------------------------
+• Maintain a `prediction_dirty` boolean per subject.
+• If subject data changes → mark dirty.
+• When user opens subject page or dashboard:
+  - If dirty → call AI once, update cache, mark clean
+  - Else show cached prediction
+• Debounce backend updates to avoid repeat AI calls
+• Trim long notes, limit assessment count if needed
+• Prefer inexpensive Gemini model for predictions
+
+------------------------------------------------------------
+8. User Interface Requirements
+------------------------------------------------------------
+Assessment Entry UI:
+• Add Category dropdown
+• Helper note: “Category determines importance in prediction”
+
+Subject Settings:
+• Edit raw category weights (auto-normalize)
+• Show preview normalized weights
+
+Dashboard:
+• Show AI predicted grade prominently
+• Optionally display baseline math result alongside
+• Tooltip popup with short AI explanation
+
+Indicators:
+• Loader or small text: “Updating prediction…” while calling AI
+
+------------------------------------------------------------
+9. Info Tab: How Predictions Work (Suggested Copy)
+------------------------------------------------------------
+Your predicted grades in this app are estimates powered by weighted performance and AI. They do not replace your teacher’s official IB predicted grades.
+
+(Show 4 bullet sections)
+1️⃣ Weighted Assessments
+Big exams and IAs matter more than quizzes. Assessment weights always add up to 1.
+
+2️⃣ HL vs SL Differences
+• HL: predictions emphasize improvement and scaling
+• SL: predictions rely more on raw percentages
+
+3️⃣ AI Trend Analysis
+AI reviews your results, weights, and notes to make predictions similar to teacher judgment.
+
+4️⃣ Automatic Updates & Fallback
+Predictions refresh when new assessments are added. If AI is unavailable, a weighted math prediction is used.
+
+------------------------------------------------------------
+10. LLM Prompt Template (Flexible Structure)
+------------------------------------------------------------
+This template is an example — developers may adjust phrasing.
+
+You are an experienced IB teacher. Predict a final IB Grade (1–7) for ONE subject.
+
+Subject: {Subject Name} ({HL or SL})
+Important notes:
+- Assessment weights below sum to 1
+- Higher weight = more importance
+- Use IB grades as main scale for HL
+- Use weighted percentage as anchor for SL
+- Consider trends and improvement
+- Consider notes for anomalies
+- Baseline math prediction: ~{baseline_value}
+
+Assessments:
+{index}) {Name} — IB {ib_grade}, {raw_percentage if exists}%
+Date: {YYYY-MM-DD} — Category: {cat}, Weight: {0.xx}
+Notes: {trimmed note}
+
+Output format:
+Predicted Grade: X
+Explanation: <1 sentence>
+
+------------------------------------------------------------
+11. Implementation Order (Recommended)
+------------------------------------------------------------
+1. Add categories table + category_id on assessments
+2. Default categories and weight editing UI
+3. Weight normalization + canonical score calculation
+4. HL/SL validation logic improvements
+5. Local prediction engine
+6. Gemini integration (auto-trigger + caching)
+7. Dashboard prediction display
+8. Info tab update
+9. Test edge cases (improving trend, mixed performance, missing data)
+
+------------------------------------------------------------
+End of Spec
+------------------------------------------------------------

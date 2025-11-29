@@ -1,13 +1,20 @@
 export type SubjectType = 'HL' | 'SL';
 
+export interface Category {
+    id: string;
+    name: string;
+    rawWeight: number;
+}
+
 export interface Assessment {
     id: string;
     name: string;
-    ibGrade: number; // IB grade (1-7) - MANDATORY
-    rawGrade?: string; // raw grade as fraction (e.g., "31/32")
-    rawPercent?: number; // percentage (0-100)
+    ibGrade: number | null; // IB grade (1-7) - Now optional for SL if raw percent exists
+    rawGrade?: string | null; // raw grade as fraction (e.g., "31/32")
+    rawPercent?: number | null; // percentage (0-100)
     date: string;
-    notes?: string; // optional notes about the assessment
+    notes?: string | null; // optional notes about the assessment
+    categoryId?: string | null;
 }
 
 export interface Subject {
@@ -15,6 +22,10 @@ export interface Subject {
     name: string;
     type: SubjectType;
     assessments: Assessment[];
+    categories: Category[];
+    aiPredictedGrade?: number | null;
+    aiExplanation?: string | null;
+    predictionDirty?: boolean;
 }
 
 // Helper to parse raw grade fraction like "31/32"
@@ -32,7 +43,7 @@ export const calculatePercentage = (assessments: Assessment[], subjectType: Subj
 
     // Filter assessments that have either rawPercent or (for SL only) rawGrade
     const validAssessments = assessments.filter(a =>
-        a.rawPercent !== undefined || (subjectType === 'SL' && a.rawGrade !== undefined)
+        (a.rawPercent !== undefined && a.rawPercent !== null) || (subjectType === 'SL' && a.rawGrade !== undefined && a.rawGrade !== null)
     );
 
     if (validAssessments.length === 0) return 0;
@@ -42,7 +53,7 @@ export const calculatePercentage = (assessments: Assessment[], subjectType: Subj
     let totalWeight = 0;
 
     validAssessments.forEach(assessment => {
-        if (assessment.rawPercent !== undefined) {
+        if (assessment.rawPercent !== undefined && assessment.rawPercent !== null) {
             // Use raw percent directly, weighted by 100 (arbitrary weight)
             totalWeightedPercent += assessment.rawPercent * 100;
             totalWeight += 100;
@@ -97,8 +108,9 @@ export const percentToIBGrade = (percent: number, type: SubjectType): number => 
 
 // Calculate predicted grade from assessment IB grades (simple average)
 export const calculatePredictedGrade = (assessments: Assessment[]): number => {
-    if (assessments.length === 0) return 0;
+    const validAssessments = assessments.filter(a => a.ibGrade !== null && a.ibGrade !== undefined);
+    if (validAssessments.length === 0) return 0;
 
-    const totalGrade = assessments.reduce((sum, assessment) => sum + assessment.ibGrade, 0);
-    return Math.round(totalGrade / assessments.length);
+    const totalGrade = validAssessments.reduce((sum, assessment) => sum + (assessment.ibGrade || 0), 0);
+    return Math.round(totalGrade / validAssessments.length);
 };
