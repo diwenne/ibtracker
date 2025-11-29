@@ -269,8 +269,8 @@ export default function Home() {
     return <HelpView onBack={() => setShowHelp(false)} />;
   }
 
-  // Onboarding view - show if no subjects
-  if (subjects.length === 0) {
+  // Onboarding view - show if less than 6 subjects
+  if (subjects.length < 6) {
     return (
       <div className="min-h-screen bg-background text-foreground font-sans flex items-center justify-center p-4">
         <div className="max-w-md w-full space-y-8">
@@ -767,7 +767,7 @@ function AddAssessmentDialog({ subject, onAdd }: { subject: Subject, onAdd: (sid
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="rawPercent">Percentage</Label>
+            <Label htmlFor="rawPercent" className="text-muted-foreground">Percentage (optional)</Label>
             <Input id="rawPercent" type="number" step="any" value={rawPercent} onChange={e => handlePercentChange(e.target.value)} placeholder="96.8" />
           </div>
 
@@ -919,7 +919,7 @@ function EditAssessmentDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="edit-rawPercent">Percentage</Label>
+            <Label htmlFor="edit-rawPercent" className="text-muted-foreground">Percentage (optional)</Label>
             <Input id="edit-rawPercent" type="number" step="any" value={rawPercent} onChange={e => handlePercentChange(e.target.value)} placeholder="96.8" />
           </div>
 
