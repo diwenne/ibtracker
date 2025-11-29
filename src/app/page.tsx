@@ -262,49 +262,24 @@ export default function Home() {
   const addAssessment = async (subjectId: string, assessment: Omit<Assessment, 'id'>) => {
     const newAssessment = await api.createAssessment(subjectId, assessment, supabase);
     if (newAssessment) {
-      setSubjects(subjects.map(sub => {
-        if (sub.id === subjectId) {
-          return {
-            ...sub,
-            assessments: [newAssessment, ...sub.assessments].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-          };
-        }
-        return sub;
-      }));
+      // Reload subjects to get updated dirty flag and trigger recalculation
+      await loadSubjects();
     }
   };
 
   const updateAssessment = async (subjectId: string, assessmentId: string, updatedAssessment: Omit<Assessment, 'id'>) => {
     const updated = await api.updateAssessment(assessmentId, updatedAssessment, supabase);
     if (updated) {
-      setSubjects(subjects.map(sub => {
-        if (sub.id === subjectId) {
-          return {
-            ...sub,
-            assessments: sub.assessments.map(a =>
-              a.id === assessmentId
-                ? updated
-                : a
-            ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-          };
-        }
-        return sub;
-      }));
+      // Reload subjects to get updated dirty flag and trigger recalculation
+      await loadSubjects();
     }
   };
 
   const deleteAssessment = async (subjectId: string, assessmentId: string) => {
     const success = await api.deleteAssessment(assessmentId, supabase);
     if (success) {
-      setSubjects(subjects.map(sub => {
-        if (sub.id === subjectId) {
-          return {
-            ...sub,
-            assessments: sub.assessments.filter(a => a.id !== assessmentId)
-          };
-        }
-        return sub;
-      }));
+      // Reload subjects to get updated dirty flag and trigger recalculation
+      await loadSubjects();
     }
   };
 
@@ -547,14 +522,14 @@ function SubjectGradeCard({
     }
   };
 
-  // Auto-recalculate on mount if dirty, or when dirty flag changes
+  // Auto-recalculate when dirty flag changes (after CRUD operations)
   useEffect(() => {
     if (subject.predictionDirty && !isPredicting && subject.assessments.length > 0) {
       setIsPredicting(true);
       api.predictGrade(subject, subject.assessments, subject.categories || [])
         .then((result) => {
           if (result) {
-            onRefresh();
+            onRefresh(); // This reloads all subjects, updating the total score
           }
         })
         .finally(() => setIsPredicting(false));
