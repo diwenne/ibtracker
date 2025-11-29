@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Plus, Trash2, ChevronRight, TrendingUp, Home as HomeIcon, Pencil, Info, Mail } from "lucide-react";
+import { Plus, Trash2, ChevronRight, TrendingUp, Home as HomeIcon, Pencil, Info, Mail, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -125,6 +125,7 @@ export default function Home() {
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const initialLoadComplete = useRef(false);
+  const [isRecalculating, setIsRecalculating] = useState(false);
 
   const supabase = createClient();
 
@@ -142,6 +143,27 @@ export default function Home() {
     } finally {
       console.log('loadSubjects: Setting loading to false');
       setLoading(false);
+    }
+  };
+
+  const handleRecalculateAll = async () => {
+    if (isRecalculating) return;
+
+    setIsRecalculating(true);
+    try {
+      // Recalculate all subjects with assessments
+      const recalcPromises = subjects
+        .filter(subject => subject.assessments.length > 0)
+        .map(subject =>
+          api.predictGrade(subject, subject.assessments, subject.categories || [])
+        );
+
+      await Promise.all(recalcPromises);
+      await loadSubjects(); // Refresh all data
+    } catch (error) {
+      console.error('Error recalculating all:', error);
+    } finally {
+      setIsRecalculating(false);
     }
   };
 
@@ -417,7 +439,19 @@ export default function Home() {
 
         {/* Giant Total Predicted Grade - Hero */}
         <section className="flex flex-col items-center justify-center mb-12">
-          <p className="text-xs text-muted-foreground mb-3 uppercase tracking-wide">Predicted Total</p>
+          <div className="flex items-center gap-3 mb-3">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide">Predicted Total</p>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5 text-muted-foreground hover:text-foreground"
+              onClick={handleRecalculateAll}
+              disabled={isRecalculating || subjects.length === 0}
+              title="Recalculate all AI predictions"
+            >
+              <RefreshCw className={`h-3 w-3 ${isRecalculating ? 'animate-spin' : ''}`} />
+            </Button>
+          </div>
           <div className="flex items-baseline gap-3">
             <span className={`text-[10rem] font-bold leading-none bg-gradient-to-br ${getTotalColor(totalPredicted)} bg-clip-text text-transparent`}>
               {totalPredicted}
@@ -495,6 +529,21 @@ function SubjectGradeCard({
   const [isEditingSubject, setIsEditingSubject] = useState(false);
   const [isPredicting, setIsPredicting] = useState(false);
 
+  const handleManualRecalculate = async () => {
+    if (isPredicting || subject.assessments.length === 0) return;
+
+    setIsPredicting(true);
+    try {
+      const result = await api.predictGrade(subject, subject.assessments, subject.categories || []);
+      if (result) {
+        onRefresh();
+      }
+    } finally {
+      setIsPredicting(false);
+    }
+  };
+
+  // Auto-recalculate on mount if dirty, or when dirty flag changes
   useEffect(() => {
     if (subject.predictionDirty && !isPredicting && subject.assessments.length > 0) {
       setIsPredicting(true);
@@ -507,6 +556,26 @@ function SubjectGradeCard({
         .finally(() => setIsPredicting(false));
     }
   }, [subject.predictionDirty, subject.id]);
+
+  // Force recalculation on mount for all subjects (page refresh)
+  useEffect(() => {
+    if (subject.assessments.length > 0 && !isPredicting) {
+      const timer = setTimeout(() => {
+        if (!subject.aiPredictedGrade && !isPredicting) {
+          setIsPredicting(true);
+          api.predictGrade(subject, subject.assessments, subject.categories || [])
+            .then((result) => {
+              if (result) {
+                onRefresh();
+              }
+            })
+            .finally(() => setIsPredicting(false));
+        }
+      }, 500); // Small delay to avoid all subjects firing at once
+
+      return () => clearTimeout(timer);
+    }
+  }, []); // Only run on mount
 
   // Calculate local prediction
   const localPrediction = calculateLocalPrediction(subject, subject.assessments, subject.categories || []);
@@ -559,6 +628,16 @@ function SubjectGradeCard({
                 onClick={() => setIsEditingSubject(true)}
               >
                 <Pencil className="h-3 w-3" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                onClick={handleManualRecalculate}
+                disabled={isPredicting || subject.assessments.length === 0}
+                title="Recalculate AI prediction"
+              >
+                <RefreshCw className={`h-3 w-3 ${isPredicting ? 'animate-spin' : ''}`} />
               </Button>
             </DialogTitle>
           </div>

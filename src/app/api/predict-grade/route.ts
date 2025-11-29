@@ -76,46 +76,88 @@ export async function POST(request: Request) {
 Assessment data: ${JSON.stringify(assessmentData)}
 Category weightings: ${JSON.stringify(categoryData)}
 
-HL-SPECIFIC RULES (TREND-FOCUSED):
-1. PRIMARY FOCUS: Look for improvement trends and consistency in recent assessments
-   - Recent IB grades (6s and 7s) are strong indicators, especially if showing improvement
-   - A student improving from 4→5→6 is likely to score 6 or higher
-   - Consistent 6s and 7s in recent high-weight assessments (Exams, IAs) strongly predict a final 6-7
-2. WEIGHTING: Assessments with higher weights (Exams, IAs) influence the prediction MORE than quizzes
-   - Recent high-weight assessments carry the most influence
-3. PERCENTAGES: Raw percentages are LESS meaningful for HL due to heavy teacher scaling/curves
-   - Focus on the IB grade trend, not the raw percentage
-4. NOTES: If notes mention "bad day", "sick", or external factors, discount that assessment slightly
-5. TIME DECAY: Older assessments matter less than recent performance
+HL-SPECIFIC RULES (STRICT CONSERVATIVE APPROACH):
+1. CALCULATE WEIGHTED AVERAGE FIRST:
+   - Compute weighted_avg = Σ(ib_grade × normalized_weight)
+   - This weighted average is your BASELINE - do NOT deviate more than ±1 grade from it
+   - Round DOWN if between grades (e.g., 5.7 → 5, NOT 6)
+
+2. BE EXTREMELY CONSERVATIVE:
+   - NEVER predict a grade the student has NEVER achieved
+   - If best grade ever is 6, the maximum prediction is 6 (NOT 7)
+   - If student got 5-6 range, predict on the LOWER end (lean towards 5, not 6)
+   - Only predict the highest achieved grade if it appears in MULTIPLE recent high-weight assessments
+
+3. TREND ADJUSTMENTS (VERY LIMITED):
+   - Improvement trend (4→5→6): Predict 5 or 6, NOT 7 (they never got 7)
+   - Consistent performance (all 5s): Predict 5, do NOT bump to 6
+   - Mixed performance (4s, 5s, 6s): Weighted average, round DOWN
+   - Only adjust UP by 1 if student has 3+ recent high-weight assessments at that higher grade
+
+4. WEIGHTING:
+   - Recent high-weight assessments (Exams, IAs) matter most
+   - But still constrained by the weighted average ±1 rule
+
+5. NOTES & DISCOUNTING:
+   - "Bad day" notes: slightly reduce weight of that assessment
+   - But do NOT use this as excuse to inflate predictions
+
+6. STRICT BOUNDARIES:
+   - Weighted avg 6.3 with max grade 6 → predict 6 (NOT 7)
+   - Weighted avg 5.7 with grades 5-6 → predict 5 (round down)
+   - Weighted avg 4.9 with improvement → predict 5 ONLY if multiple recent 5s exist
 
 Output strictly in this JSON format:
 {
   "predictedGrade": number,
-  "explanation": "string (max 2 sentences explaining the trend or consistency observed)"
+  "explanation": "string (max 2 sentences citing weighted average and constraints)"
 }`
             : `Predict the final IB grade (1-7) for the SL (Standard Level) subject "${subject.name}".
 
 Assessment data: ${JSON.stringify(assessmentData)}
 Category weightings: ${JSON.stringify(categoryData)}
 
-SL-SPECIFIC RULES (AVERAGE-FOCUSED):
-1. PRIMARY FOCUS: Calculate weighted average of raw percentages
-   - Convert weighted average percentage to IB grade band using SL boundaries:
+SL-SPECIFIC RULES (STRICT MATHEMATICAL APPROACH):
+1. CALCULATE WEIGHTED AVERAGE PERCENTAGE:
+   - weighted_avg_pct = Σ(raw_percentage × normalized_weight)
+   - This is your PRIMARY and DOMINANT predictor
+   - Convert to IB grade using STRICT boundaries:
      * 96-100% = 7, 90-95% = 6, 86-89% = 5, 76-85% = 4, 70-75% = 3, 50-69% = 2, 0-49% = 1
-   - This weighted average is the PRIMARY predictor
-2. WEIGHTING: Respect category weights strictly
-   - Higher weight categories (Exams, IAs) contribute more to the weighted average
-3. TREND (MINOR): Only make SMALL adjustments for trends
-   - If a student is clearly improving, you may bump up by 1 grade maximum
-   - If declining, you may lower by 1 grade maximum
-   - Most of the time, stick to the weighted average
-4. NOTES: If notes mention "bad day", "sick", or external factors, discount that assessment slightly
-5. PERCENTAGES ARE KEY: Unlike HL, percentages directly map to IB grades for SL
+
+2. BE EXTREMELY STRICT WITH BOUNDARIES:
+   - 95.9% = 6 (NOT 7, must be ≥96% for 7)
+   - 89.9% = 5 (NOT 6, must be ≥90% for 6)
+   - 85.9% = 4 (NOT 5, must be ≥86% for 5)
+   - Round DOWN when at boundary (95.5% → 6, NOT 7)
+
+3. TREND ADJUSTMENTS (ALMOST NONE):
+   - Trends can ONLY adjust by ±1 grade from weighted average
+   - Only adjust UP if:
+     * Student has 3+ recent high-weight assessments at higher grade
+     * AND weighted avg is within 2% of next boundary (e.g., 94.5%+ to consider 7)
+   - Default: stick to weighted average conversion, NO adjustment
+
+4. NEVER PREDICT ABOVE MAXIMUM ACHIEVED:
+   - If best percentage is 92% (grade 6), NEVER predict 7
+   - If percentages range 85-89% (grades 4-5), predict 5 or lower
+   - Be conservative: lean towards lower grade
+
+5. WEIGHTING STRICT ENFORCEMENT:
+   - Higher weight categories (Exams, IAs) dominate the weighted average
+   - A single high-weight exam at 88% outweighs 5 quizzes at 95%
+
+6. NOTES:
+   - "Bad day" notes: slightly reduce that assessment's contribution
+   - But do NOT inflate final prediction beyond weighted average ±1
+
+7. FINAL CHECK:
+   - Does prediction match weighted_avg_pct conversion? If not, explain why
+   - If weighted avg is 91% (grade 6), prediction should be 6 unless strong evidence
 
 Output strictly in this JSON format:
 {
   "predictedGrade": number,
-  "explanation": "string (max 2 sentences explaining the weighted average and any minor trend adjustments)"
+  "explanation": "string (max 2 sentences stating weighted avg % and boundary)"
 }`;
 
         const completion = await openai.chat.completions.create({
