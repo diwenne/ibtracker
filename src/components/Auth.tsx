@@ -60,7 +60,7 @@ export default function Auth({ onLogin }: { onLogin: () => void }) {
                 <form onSubmit={handleAuth} className="flex flex-col gap-6">
                     <CardContent className="space-y-4">
                         <div className="space-y-2">
-                            <Label htmlFor="email">Email</Label>
+                            <Label htmlFor="email">email</Label>
                             <Input
                                 id="email"
                                 type="email"
@@ -71,7 +71,7 @@ export default function Auth({ onLogin }: { onLogin: () => void }) {
                             />
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="password">Password</Label>
+                            <Label htmlFor="password">password</Label>
                             <Input
                                 id="password"
                                 type="password"
