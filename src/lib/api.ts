@@ -305,7 +305,7 @@ export const api = {
             // Mark subject dirty (don't await - run in background)
             supabase.from('subjects').update({ prediction_dirty: true }).eq('id', subjectId)
                 .then(() => console.log('Subject marked dirty'))
-                .catch(err => console.warn('Failed to mark subject dirty:', err));
+                .catch((err: any) => console.warn('Failed to mark subject dirty:', err));
 
             return {
                 id: data.id,
