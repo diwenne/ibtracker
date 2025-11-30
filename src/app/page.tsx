@@ -1258,7 +1258,7 @@ function HelpView({ onBack }: { onBack: () => void }) {
       <main className="container mx-auto px-6 py-8 max-w-4xl">
         <div className="space-y-6">
           <div>
-            <h2 className="text-xl font-semibold mb-4">Welcome to IB Tracker</h2>
+            <h2 className="text-xl font-semibold mb-4">welcome to IB tracker!!!</h2>
             <p className="text-muted-foreground">
               i made this website to visualize and log my IB grades because i'm failing. let's fail together 🫡
             </p>
