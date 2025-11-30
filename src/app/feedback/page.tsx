@@ -100,7 +100,7 @@ export default function FeedbackPage() {
                 <DialogHeader>
                   <DialogTitle>Share Your Thoughts</DialogTitle>
                   <DialogDescription>
-                    I want to make this tool more useful for everyone. Share feedback on what works well, what could be improved, or suggest new features.
+                    what would make this tool more useful for YOU. share feedback on what works well, what could be improved, or suggest new features.
                   </DialogDescription>
                 </DialogHeader>
 
@@ -116,7 +116,7 @@ export default function FeedbackPage() {
                     <Alert>
                       <AlertCircle className="h-4 w-4" />
                       <AlertDescription>
-                        Your submission will be <strong>permanently visible</strong> to everyone and cannot be deleted by you.
+                        your submission will be <strong>permanently visible</strong> to everyone and cannot be deleted by you.
                       </AlertDescription>
                     </Alert>
                   )}
@@ -129,14 +129,14 @@ export default function FeedbackPage() {
                       disabled={!content.trim()}
                       className="w-full"
                     >
-                      Continue
+                      continue
                     </Button>
                   ) : (
                     <div className="w-full space-y-2">
                       <Alert variant="destructive">
                         <AlertCircle className="h-4 w-4" />
                         <AlertDescription>
-                          This will be permanent and public. Are you sure?
+                          this will be permanent <strong>and public</strong>. are you sure?
                         </AlertDescription>
                       </Alert>
                       <div className="flex gap-2">
@@ -145,7 +145,7 @@ export default function FeedbackPage() {
                           onClick={() => setShowConfirmation(false)}
                           className="flex-1"
                         >
-                          Back
+                          back  
                         </Button>
                         <Button
                           onClick={handleSubmit}
@@ -162,17 +162,17 @@ export default function FeedbackPage() {
             </Dialog>
           </div>
           <p className="text-sm text-muted-foreground">
-            Help improve this IB grade tracker by sharing your thoughts
+            help improve this IB tracker by sharing your thoughts
           </p>
         </div>
 
         {/* Feedback List */}
         {loading ? (
-          <p className="text-center text-muted-foreground py-12">Loading...</p>
+          <p className="text-center text-muted-foreground py-12">loading...</p>
         ) : feedbackList.length === 0 ? (
           <Card className="rounded-lg border-dashed">
             <CardContent className="py-12 text-center">
-              <p className="text-muted-foreground">No feedback yet. Be the first to share your thoughts!</p>
+              <p className="text-muted-foreground">no feedback yet. be the first to share your thoughts!</p>
             </CardContent>
           </Card>
         ) : (
