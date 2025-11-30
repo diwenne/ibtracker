@@ -6,6 +6,15 @@ export interface Category {
     rawWeight: number;
 }
 
+export interface Feedback {
+    id: string;
+    userId: string;
+    userEmail: string | null;
+    content: string;
+    type: 'feedback' | 'feature';
+    createdAt: string;
+}
+
 export interface Assessment {
     id: string;
     name: string;

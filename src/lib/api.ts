@@ -1,6 +1,6 @@
 import { createClient } from './supabase';
 import { SupabaseClient } from '@supabase/supabase-js';
-import { Subject, Assessment, SubjectType, Category } from './types';
+import { Subject, Assessment, SubjectType, Category, Feedback } from './types';
 import { Subject as DBSubject, Assessment as DBAssessment } from '@/types/database';
 
 // Helper function to add timeout to promises
@@ -414,6 +414,91 @@ export const api = {
             return await response.json();
         } catch (error) {
             console.error('Error predicting grade:', error);
+            return null;
+        }
+    },
+
+    // Feedback Methods
+
+    fetchFeedback: async (client?: SupabaseClient): Promise<Feedback[]> => {
+        const supabase = client || createClient();
+
+        try {
+            console.log('fetchFeedback: Starting query...');
+            const { data, error } = await supabase
+                .from('feedback')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            console.log('fetchFeedback: Query complete. Error:', error, 'Data count:', data?.length);
+
+            if (error) {
+                console.error('Error fetching feedback:', error);
+                return [];
+            }
+
+            if (!data) {
+                console.log('fetchFeedback: No data returned');
+                return [];
+            }
+
+            const mapped = data.map((fb: any) => ({
+                id: fb.id,
+                userId: fb.user_id,
+                userEmail: fb.user_email,
+                content: fb.content,
+                type: fb.type,
+                createdAt: fb.created_at
+            }));
+
+            console.log('fetchFeedback: Returning', mapped.length, 'items');
+            return mapped;
+        } catch (err) {
+            console.error('Exception in fetchFeedback:', err);
+            if (err instanceof Error) {
+                console.error('Error details:', err.message, err.stack);
+            }
+            return [];
+        }
+    },
+
+    createFeedback: async (content: string, type: 'feedback' | 'feature', client?: SupabaseClient): Promise<Feedback | null> => {
+        const supabase = client || createClient();
+
+        try {
+            const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+            if (sessionError || !session) {
+                console.error('Session error:', sessionError);
+                return null;
+            }
+
+            const { data, error } = await supabase
+                .from('feedback')
+                .insert({
+                    user_id: session.user.id,
+                    user_email: session.user.email,
+                    content,
+                    type
+                })
+                .select()
+                .single();
+
+            if (error) {
+                console.error('Error creating feedback:', error);
+                return null;
+            }
+
+            return {
+                id: data.id,
+                userId: data.user_id,
+                userEmail: data.user_email,
+                content: data.content,
+                type: data.type,
+                createdAt: data.created_at
+            };
+        } catch (err) {
+            console.error('Exception in createFeedback:', err);
             return null;
         }
     }

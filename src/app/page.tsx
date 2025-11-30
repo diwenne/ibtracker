@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Plus, Trash2, ChevronRight, TrendingUp, Home as HomeIcon, Pencil, Info, Mail, RefreshCw } from "lucide-react";
+import { Plus, Trash2, ChevronRight, TrendingUp, Home as HomeIcon, Pencil, Info, Mail, RefreshCw, MessageSquare, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Subject, Assessment, SubjectType, calculatePercentage, getGrade, calculateRawPercent, percentToIBGrade, parseRawGrade, calculatePredictedGrade } from "@/lib/types";
@@ -394,23 +395,58 @@ export default function Home() {
             <div className="flex items-center gap-2">
               <img src="/iblogo.png" alt="IB" className="h-8 w-auto" />
               <h1 className="font-bold text-2xl tracking-tight text-foreground">Tracker</h1>
+              <Badge variant="secondary" className="text-xs">BETA</Badge>
             </div>
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setShowHelp(true)}>
               <Info className="h-4 w-4" />
             </Button>
           </div>
-          <div className="flex gap-2">
-            <div className="flex items-center gap-2">
-              <Badge variant="secondary" className="text-xs">BETA</Badge>
-              <Button variant="outline" onClick={() => setShowTrends(true)}>
-                <TrendingUp className="mr-2 h-4 w-4" />
-                View Trends
-              </Button>
-            </div>
+
+          {/* Desktop Navigation */}
+          <div className="hidden md:flex gap-2">
+            <Button variant="outline" onClick={() => setShowTrends(true)}>
+              <TrendingUp className="mr-2 h-4 w-4" />
+              View Trends
+            </Button>
+            <Button variant="outline" onClick={() => window.location.href = '/feedback'}>
+              <MessageSquare className="mr-2 h-4 w-4" />
+              Feedback
+            </Button>
             <Button variant="ghost" onClick={() => supabase.auth.signOut()}>
               Sign Out
             </Button>
           </div>
+
+          {/* Mobile Navigation */}
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" className="md:hidden h-10 w-10 hover:bg-transparent">
+                <Menu className="h-6 w-6" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-full border-none p-0 [&>button]:h-10 [&>button]:w-10 [&>button>svg]:h-6 [&>button>svg]:w-6 [&>button]:top-6 [&>button]:right-6 [&>button]:hover:bg-transparent [&>button]:hover:opacity-70">
+              <div className="flex flex-col gap-1 p-8 pt-12">
+                <button
+                  onClick={() => setShowTrends(true)}
+                  className="text-left text-2xl font-medium py-3 px-4 rounded-md"
+                >
+                  View Trends
+                </button>
+                <button
+                  onClick={() => window.location.href = '/feedback'}
+                  className="text-left text-2xl font-medium py-3 px-4 rounded-md"
+                >
+                  Feedback
+                </button>
+                <button
+                  onClick={() => supabase.auth.signOut()}
+                  className="text-left text-2xl font-medium py-3 px-4 rounded-md"
+                >
+                  Sign Out
+                </button>
+              </div>
+            </SheetContent>
+          </Sheet>
         </div>
       </header>
 
