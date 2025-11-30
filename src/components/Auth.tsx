@@ -30,7 +30,7 @@ export default function Auth({ onLogin }: { onLogin: () => void }) {
                     password,
                 });
                 if (error) throw error;
-                setMessage("Check your email for the confirmation link!");
+                setMessage("check ur email for the confirmation link!");
             } else {
                 const { error } = await supabase.auth.signInWithPassword({
                     email,
@@ -50,11 +50,11 @@ export default function Auth({ onLogin }: { onLogin: () => void }) {
         <div className="min-h-screen flex items-center justify-center bg-background p-4">
             <Card className="w-full max-w-md">
                 <CardHeader>
-                    <CardTitle>{isSignUp ? "Create an Account" : "Welcome Back"}</CardTitle>
+                    <CardTitle>{isSignUp ? "create an account" : "welcome to the ib tracker"}</CardTitle>
                     <CardDescription>
                         {isSignUp
-                            ? "Enter your email to create your account"
-                            : "Enter your email to sign in to your account"}
+                            ? "enter ur email to create ur account"
+                            : "enter ur email to sign in to ur account"}
                     </CardDescription>
                 </CardHeader>
                 <form onSubmit={handleAuth} className="flex flex-col gap-6">
@@ -64,7 +64,7 @@ export default function Auth({ onLogin }: { onLogin: () => void }) {
                             <Input
                                 id="email"
                                 type="email"
-                                placeholder="m@example.com"
+                                placeholder="d@example.com"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 required
@@ -85,7 +85,7 @@ export default function Auth({ onLogin }: { onLogin: () => void }) {
                     </CardContent>
                     <CardFooter className="flex flex-col gap-4">
                         <Button type="submit" className="w-full" disabled={loading}>
-                            {loading ? "Loading..." : isSignUp ? "Sign Up" : "Sign In"}
+                            {loading ? "Loading..." : isSignUp ? "sign up" : "sign in"}
                         </Button>
                         <Button
                             type="button"
@@ -94,8 +94,8 @@ export default function Auth({ onLogin }: { onLogin: () => void }) {
                             className="text-sm text-muted-foreground"
                         >
                             {isSignUp
-                                ? "Already have an account? Sign In"
-                                : "Don't have an account? Sign Up"}
+                                ? "already have an account? sign in"
+                                : "don't have an account? sign up"}
                         </Button>
                     </CardFooter>
                 </form>
