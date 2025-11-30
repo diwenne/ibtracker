@@ -420,11 +420,12 @@ export default function Home() {
           {/* Mobile Navigation */}
           <Sheet>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="md:hidden h-10 w-10 hover:bg-transparent">
+              <button className="md:hidden h-10 w-10 inline-flex items-center justify-center">
                 <Menu className="h-6 w-6" />
-              </Button>
+              </button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-full border-none p-0 [&>button]:h-10 [&>button]:w-10 [&>button>svg]:h-6 [&>button>svg]:w-6 [&>button]:top-6 [&>button]:right-6 [&>button]:hover:bg-transparent [&>button]:hover:opacity-70">
+            <SheetContent side="left" className="w-full border-none p-0 [&>button]:!h-10 [&>button]:!w-10 [&>button>svg]:!h-6 [&>button>svg]:!w-6 [&>button]:!top-[24px] [&>button]:!right-[calc(50vw-640px+16px)] [&>button]:hover:bg-transparent [&>button]:hover:opacity-70 max-[1280px]:[&>button]:!right-4">
+              <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
               <div className="flex flex-col gap-1 p-8 pt-12">
                 <button
                   onClick={() => setShowTrends(true)}
@@ -726,7 +727,7 @@ function SubjectGradeCard({
                 return (
                   <div
                     key={assessment.id}
-                    className="flex items-center justify-between p-3 rounded-lg bg-accent/30 hover:bg-accent/50 transition-colors cursor-pointer"
+                    className="flex items-center justify-between p-3 rounded-lg bg-accent/10 hover:bg-accent/20 transition-colors cursor-pointer"
                     onClick={() => setEditingAssessment(assessment)}
                   >
                     <div>
