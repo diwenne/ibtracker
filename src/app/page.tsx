@@ -1260,7 +1260,7 @@ function HelpView({ onBack }: { onBack: () => void }) {
           <div>
             <h2 className="text-xl font-semibold mb-4">Welcome to IB Tracker</h2>
             <p className="text-muted-foreground">
-              I made this website to visualize and log my IB grades because I'm failing. Let's fail together 🫡
+              i made this website to visualize and log my IB grades because i'm failing. let's fail together 🫡
             </p>
           </div>
 
