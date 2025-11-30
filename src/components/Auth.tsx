@@ -30,7 +30,7 @@ export default function Auth({ onLogin }: { onLogin: () => void }) {
             if (isSignUp) {
                 // Validate access code for sign up
                 if (accessCode !== SIGNUP_ACCESS_CODE) {
-                    throw new Error("invalid access code. contact admin for access.");
+                    throw new Error("invalid access code. contact @diwennee for access.");
                 }
 
                 const { error } = await supabase.auth.signUp({
