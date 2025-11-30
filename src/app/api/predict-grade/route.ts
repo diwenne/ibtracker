@@ -56,7 +56,6 @@ export async function POST(request: Request) {
             name: a.name,
             ibGrade: a.ibGrade,
             rawPercent: a.rawPercent,
-            rawGrade: a.rawGrade,
             date: a.date,
             notes: a.notes,
             category_id: a.categoryId || null,
@@ -86,9 +85,10 @@ ${hasUncategorized ? `\nCRITICAL: Uncategorized assessments have an implicit wei
 
 HL-SPECIFIC RULES (STRICT CONSERVATIVE APPROACH):
 1. CALCULATE WEIGHTED AVERAGE FIRST:
+   - Use ibGrade and rawPercent fields for context
    - Category weights are DIRECT PERCENTAGES (e.g., 0.2 = 20%, 0.5 = 50%)
    - Uncategorized assessments (if any) use the remaining weight
-   - Compute weighted_avg = Σ(ib_grade × category_weight)
+   - Compute weighted_avg = Σ(ibGrade × category_weight)
    - This weighted average is your BASELINE - do NOT deviate more than ±1 grade from it
    - Round DOWN if between grades (e.g., 5.7 → 5, NOT 6)
 
@@ -134,6 +134,8 @@ Category weightings: ${JSON.stringify(categoryData)}
 ${hasUncategorized ? `\nCRITICAL: Uncategorized assessments have an implicit weight of ${(uncategorizedWeight * 100).toFixed(1)}% (remaining weight after categories).${uncategorizedWeight === 0 ? ' THIS MEANS UNCATEGORIZED ASSESSMENTS ARE WORTH 0% AND MUST BE COMPLETELY IGNORED IN YOUR CALCULATION.' : ''}` : ''}
 
 THIS IS PURE MATHEMATICS - NO INTERPRETATION, NO TRENDS, NO ADJUSTMENTS:
+
+IMPORTANT: Use rawPercent for calculations. ibGrade field is provided for reference only.
 
 STEP 1: CALCULATE WEIGHTED AVERAGE PERCENTAGE (EXACT FORMULA):
 1. For each category in categoryData:
