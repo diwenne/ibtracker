@@ -13,6 +13,7 @@ export default function Auth({ onLogin }: { onLogin: () => void }) {
     const [accessCode, setAccessCode] = useState("");
     const [loading, setLoading] = useState(false);
     const [isSignUp, setIsSignUp] = useState(false);
+    const [isForgotPassword, setIsForgotPassword] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [message, setMessage] = useState<string | null>(null);
 
@@ -27,7 +28,18 @@ export default function Auth({ onLogin }: { onLogin: () => void }) {
         setMessage(null);
 
         try {
-            if (isSignUp) {
+            if (isForgotPassword) {
+                // Use localhost for development, production URL for deployed version
+                const redirectUrl = window.location.hostname === 'localhost'
+                    ? 'http://localhost:3000/reset-password'
+                    : `${window.location.origin}/reset-password`;
+
+                const { error } = await supabase.auth.resetPasswordForEmail(email, {
+                    redirectTo: redirectUrl,
+                });
+                if (error) throw error;
+                setMessage("check ur email for the password reset link!");
+            } else if (isSignUp) {
                 // Validate access code for sign up
                 if (accessCode !== SIGNUP_ACCESS_CODE) {
                     throw new Error("invalid access code. contact @diwennee for access.");
@@ -58,9 +70,13 @@ export default function Auth({ onLogin }: { onLogin: () => void }) {
         <div className="min-h-screen flex items-center justify-center bg-background p-4">
             <Card className="w-full max-w-md">
                 <CardHeader>
-                    <CardTitle>{isSignUp ? "create an account" : "welcome to the ib tracker"}</CardTitle>
+                    <CardTitle>
+                        {isForgotPassword ? "reset password" : isSignUp ? "create an account" : "welcome to the ib tracker"}
+                    </CardTitle>
                     <CardDescription>
-                        {isSignUp
+                        {isForgotPassword
+                            ? "enter ur email to get a password reset link"
+                            : isSignUp
                             ? "create ur account to save ur stuff"
                             : "sign in and access ur stuff anywhere"}
                     </CardDescription>
@@ -78,17 +94,19 @@ export default function Auth({ onLogin }: { onLogin: () => void }) {
                                 required
                             />
                         </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="password">password</Label>
-                            <Input
-                                id="password"
-                                type="password"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                required
-                            />
-                        </div>
-                        {isSignUp && (
+                        {!isForgotPassword && (
+                            <div className="space-y-2">
+                                <Label htmlFor="password">password</Label>
+                                <Input
+                                    id="password"
+                                    type="password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    required
+                                />
+                            </div>
+                        )}
+                        {isSignUp && !isForgotPassword && (
                             <div className="space-y-2">
                                 <Label htmlFor="accessCode">access code (api usage is expensive) </Label>
                                 <Input
@@ -106,18 +124,30 @@ export default function Auth({ onLogin }: { onLogin: () => void }) {
                     </CardContent>
                     <CardFooter className="flex flex-col gap-4">
                         <Button type="submit" className="w-full" disabled={loading}>
-                            {loading ? "Loading..." : isSignUp ? "sign up" : "sign in"}
+                            {loading ? "Loading..." : isForgotPassword ? "send reset link" : isSignUp ? "sign up" : "sign in"}
                         </Button>
-                        <Button
-                            type="button"
-                            variant="link"
-                            onClick={() => setIsSignUp(!isSignUp)}
-                            className="text-sm text-muted-foreground"
-                        >
-                            {isSignUp
-                                ? "already have an account? sign in"
-                                : "don't have an account? sign up"}
-                        </Button>
+                        {!isForgotPassword && (
+                            <Button
+                                type="button"
+                                variant="link"
+                                onClick={() => setIsSignUp(!isSignUp)}
+                                className="text-sm text-muted-foreground"
+                            >
+                                {isSignUp
+                                    ? "already have an account? sign in"
+                                    : "don't have an account? sign up"}
+                            </Button>
+                        )}
+                        {!isSignUp && (
+                            <Button
+                                type="button"
+                                variant="link"
+                                onClick={() => setIsForgotPassword(!isForgotPassword)}
+                                className="text-sm text-muted-foreground"
+                            >
+                                {isForgotPassword ? "back to sign in" : "forgot password?"}
+                            </Button>
+                        )}
                     </CardFooter>
                 </form>
             </Card>
