@@ -53,8 +53,8 @@ export default function Auth({ onLogin }: { onLogin: () => void }) {
                     <CardTitle>{isSignUp ? "create an account" : "welcome to the ib tracker"}</CardTitle>
                     <CardDescription>
                         {isSignUp
-                            ? "enter ur email to create ur account"
-                            : "enter ur email to sign in to ur account"}
+                            ? "create ur account to save ur stuff"
+                            : "sign in and access ur stuff anywhere"}
                     </CardDescription>
                 </CardHeader>
                 <form onSubmit={handleAuth} className="flex flex-col gap-6">
