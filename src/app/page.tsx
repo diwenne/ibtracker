@@ -195,7 +195,7 @@ export default function Home() {
 
     init();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event: any, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event: any, session: any) => {
       console.log('onAuthStateChange: Event:', _event, 'Session:', session ? 'exists' : 'null');
 
       if (!mounted) return;
