@@ -10,12 +10,15 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 export default function Auth({ onLogin }: { onLogin: () => void }) {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [accessCode, setAccessCode] = useState("");
     const [loading, setLoading] = useState(false);
     const [isSignUp, setIsSignUp] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [message, setMessage] = useState<string | null>(null);
 
     const supabase = createClient();
+
+    const SIGNUP_ACCESS_CODE = "4545";
 
     const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -25,6 +28,11 @@ export default function Auth({ onLogin }: { onLogin: () => void }) {
 
         try {
             if (isSignUp) {
+                // Validate access code for sign up
+                if (accessCode !== SIGNUP_ACCESS_CODE) {
+                    throw new Error("invalid access code. contact admin for access.");
+                }
+
                 const { error } = await supabase.auth.signUp({
                     email,
                     password,
@@ -80,6 +88,19 @@ export default function Auth({ onLogin }: { onLogin: () => void }) {
                                 required
                             />
                         </div>
+                        {isSignUp && (
+                            <div className="space-y-2">
+                                <Label htmlFor="accessCode">access code (api usage is expensive) </Label>
+                                <Input
+                                    id="accessCode"
+                                    type="text"
+                                    placeholder="enter access code"
+                                    value={accessCode}
+                                    onChange={(e) => setAccessCode(e.target.value)}
+                                    required
+                                />
+                            </div>
+                        )}
                         {error && <p className="text-sm text-red-500">{error}</p>}
                         {message && <p className="text-sm text-green-500">{message}</p>}
                     </CardContent>
