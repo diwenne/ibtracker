@@ -893,35 +893,35 @@ function AddAssessmentDialog({ subject, onAdd }: { subject: Subject, onAdd: (sid
           Add Grade
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[425px] p-4 sm:p-6">
         <DialogHeader>
-          <DialogTitle>Add Assessment for {subject.name}</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="text-base sm:text-lg">Add Assessment for {subject.name}</DialogTitle>
+          <DialogDescription className="text-xs sm:text-sm">
             Enter the details of your assessment.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 py-4">
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="name" className="text-right">
+        <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4 py-2 sm:py-4">
+          <div className="space-y-1.5 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0">
+            <Label htmlFor="name" className="text-xs sm:text-sm sm:text-right">
               Name
             </Label>
             <Input
               id="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="col-span-3"
+              className="col-span-3 text-sm h-8 sm:h-9"
               placeholder="e.g. Unit 1 Test"
               required
             />
           </div>
 
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="category" className="text-right">
+          <div className="space-y-1.5 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0">
+            <Label htmlFor="category" className="text-xs sm:text-sm sm:text-right">
               Category
             </Label>
             <div className="col-span-3">
               <Select value={categoryId} onValueChange={setCategoryId}>
-                <SelectTrigger>
+                <SelectTrigger className="h-8 sm:h-9 text-sm">
                   <SelectValue placeholder="Select category" />
                 </SelectTrigger>
                 <SelectContent>
@@ -934,8 +934,8 @@ function AddAssessmentDialog({ subject, onAdd }: { subject: Subject, onAdd: (sid
             </div>
           </div>
 
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="ibGrade" className="text-right">
+          <div className="space-y-1.5 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0">
+            <Label htmlFor="ibGrade" className="text-xs sm:text-sm sm:text-right">
               IB Grade
             </Label>
             <div className="col-span-3">
@@ -947,6 +947,7 @@ function AddAssessmentDialog({ subject, onAdd }: { subject: Subject, onAdd: (sid
                 value={ibGrade}
                 onChange={(e) => setIbGrade(e.target.value)}
                 placeholder="1-7"
+                className="text-sm h-8 sm:h-9"
               />
               <p className="text-[10px] text-muted-foreground mt-1">
                 {subject.type === 'HL' ? 'Required for HL' : 'Optional if % provided'}
@@ -954,21 +955,21 @@ function AddAssessmentDialog({ subject, onAdd }: { subject: Subject, onAdd: (sid
             </div>
           </div>
 
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="rawGrade" className="text-right">
+          <div className="space-y-1.5 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0">
+            <Label htmlFor="rawGrade" className="text-xs sm:text-sm sm:text-right">
               Raw Score
             </Label>
             <Input
               id="rawGrade"
               value={rawGrade}
               onChange={(e) => setRawGrade(e.target.value)}
-              className="col-span-3"
+              className="col-span-3 text-sm h-8 sm:h-9"
               placeholder="e.g. 31/32"
             />
           </div>
 
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="rawPercent" className="text-right">
+          <div className="space-y-1.5 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0">
+            <Label htmlFor="rawPercent" className="text-xs sm:text-sm sm:text-right">
               Percentage
             </Label>
             <Input
@@ -977,13 +978,13 @@ function AddAssessmentDialog({ subject, onAdd }: { subject: Subject, onAdd: (sid
               step="any"
               value={rawPercent}
               onChange={(e) => handlePercentChange(e.target.value)}
-              className="col-span-3"
+              className="col-span-3 text-sm h-8 sm:h-9"
               placeholder="e.g. 96.8"
             />
           </div>
 
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="date" className="text-right">
+          <div className="space-y-1.5 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0">
+            <Label htmlFor="date" className="text-xs sm:text-sm sm:text-right">
               Date
             </Label>
             <Input
@@ -991,26 +992,26 @@ function AddAssessmentDialog({ subject, onAdd }: { subject: Subject, onAdd: (sid
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="col-span-3"
+              className="col-span-3 text-sm h-8 sm:h-9"
               required
             />
           </div>
 
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="notes" className="text-right">
+          <div className="space-y-1.5 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0">
+            <Label htmlFor="notes" className="text-xs sm:text-sm sm:text-right">
               Notes
             </Label>
             <Input
               id="notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="col-span-3"
+              className="col-span-3 text-sm h-8 sm:h-9"
               placeholder="Add any notes..."
             />
           </div>
 
           <DialogFooter>
-            <Button type="submit">Add Assessment</Button>
+            <Button type="submit" className="h-8 sm:h-9 text-sm">Add Assessment</Button>
           </DialogFooter>
         </form>
       </DialogContent>
