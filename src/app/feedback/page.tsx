@@ -145,7 +145,7 @@ export default function FeedbackPage() {
                           onClick={() => setShowConfirmation(false)}
                           className="flex-1"
                         >
-                          back  
+                          back
                         </Button>
                         <Button
                           onClick={handleSubmit}
@@ -180,11 +180,11 @@ export default function FeedbackPage() {
             {feedbackList.map((item) => (
               <Card key={item.id} className="rounded-lg">
                 <CardContent className="p-5 pt-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs text-muted-foreground">
+                  <div className="flex flex-col gap-0.5 mb-3">
+                    <span className="text-xs font-medium text-foreground/80 truncate" title={item.userEmail || 'Anonymous'}>
                       {item.userEmail || 'Anonymous'}
                     </span>
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-[10px] text-muted-foreground">
                       {formatDate(item.createdAt)}
                     </span>
                   </div>

@@ -605,7 +605,7 @@ function SubjectGradeCard({
         </div>
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-2xl p-4 sm:p-6">
+      <DialogContent className="sm:max-w-2xl p-4 sm:p-6 max-h-[75vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center justify-between gap-4 pr-6 sm:pr-8">
             <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
@@ -649,7 +649,9 @@ function SubjectGradeCard({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+
+
+        <div className="space-y-4 py-2 sm:py-4">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <h3 className="font-medium">Assessments</h3>
             <div className="flex gap-2 w-full sm:w-auto">
@@ -689,38 +691,40 @@ function SubjectGradeCard({
                 return (
                   <div
                     key={assessment.id}
-                    className="flex items-center justify-between p-3 rounded-lg bg-accent/10 hover:bg-accent/20 transition-colors cursor-pointer"
+                    className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-lg bg-accent/10 hover:bg-accent/20 transition-colors cursor-pointer gap-2 sm:gap-4"
                     onClick={() => setEditingAssessment(assessment)}
                   >
-                    <div>
-                      <div className="font-medium">{assessment.name}</div>
-                      <div className="text-xs text-muted-foreground flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium truncate">{assessment.name}</div>
+                      <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
                         <span>{formatDateForDisplay(assessment.date)}</span>
                         {assessment.categoryId && (
-                          <span className="bg-secondary px-1.5 rounded text-[10px]">
+                          <span className="bg-secondary px-1.5 rounded text-[10px] truncate max-w-[100px]">
                             {subject.categories?.find(c => c.id === assessment.categoryId)?.name}
                           </span>
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-4">
-                      {displayRawGrade && (
-                        <span className="text-sm text-muted-foreground">
-                          {displayRawGrade}
+                    <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-4 w-full sm:w-auto mt-1 sm:mt-0">
+                      <div className="flex items-center gap-2 sm:gap-4 text-sm">
+                        {displayRawGrade && (
+                          <span className="text-muted-foreground whitespace-nowrap">
+                            {displayRawGrade}
+                          </span>
+                        )}
+                        {displayPercent > 0 && (
+                          <span className="font-medium whitespace-nowrap">
+                            {displayPercent.toFixed(0)}%
+                          </span>
+                        )}
+                        <span className="font-medium whitespace-nowrap">
+                          IB: {displayGrade}
                         </span>
-                      )}
-                      {displayPercent > 0 && (
-                        <span className="text-sm font-medium w-12 text-right">
-                          {displayPercent.toFixed(0)}%
-                        </span>
-                      )}
-                      <span className="text-sm font-medium w-12 text-right">
-                        IB: {displayGrade}
-                      </span>
+                      </div>
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0 ml-2"
                         onClick={(e) => {
                           e.stopPropagation();
                           onDeleteAssessment(subject.id, assessment.id);
@@ -756,7 +760,7 @@ function SubjectGradeCard({
           onUpdate={onUpdateSubject}
         />
       </DialogContent>
-    </Dialog>
+    </Dialog >
   );
 }
 
@@ -893,7 +897,7 @@ function AddAssessmentDialog({ subject, onAdd }: { subject: Subject, onAdd: (sid
           Add Grade
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px] p-4 sm:p-6">
+      <DialogContent className="sm:max-w-[425px] p-4 sm:p-6 max-h-[75vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-base sm:text-lg">Add Assessment for {subject.name}</DialogTitle>
           <DialogDescription className="text-xs sm:text-sm">
@@ -934,67 +938,68 @@ function AddAssessmentDialog({ subject, onAdd }: { subject: Subject, onAdd: (sid
             </div>
           </div>
 
-          <div className="space-y-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0">
-            <Label htmlFor="ibGrade" className="text-sm sm:text-right">
-              IB Grade
-            </Label>
-            <div className="col-span-3">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4">
+            <div className="space-y-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0 sm:col-span-2">
+              <Label htmlFor="ibGrade" className="text-sm sm:text-right sm:col-span-1">
+                IB Grade
+              </Label>
+              <div className="col-span-3">
+                <Input
+                  id="ibGrade"
+                  type="number"
+                  min="1"
+                  max="7"
+                  value={ibGrade}
+                  onChange={(e) => setIbGrade(e.target.value)}
+                  placeholder="1-7"
+                  className="text-sm h-9"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0 sm:col-span-2">
+              <Label htmlFor="rawGrade" className="text-sm sm:text-right sm:col-span-1">
+                Raw Score
+              </Label>
               <Input
-                id="ibGrade"
-                type="number"
-                min="1"
-                max="7"
-                value={ibGrade}
-                onChange={(e) => setIbGrade(e.target.value)}
-                placeholder="1-7"
-                className="text-sm h-9"
+                id="rawGrade"
+                value={rawGrade}
+                onChange={(e) => setRawGrade(e.target.value)}
+                className="col-span-3 text-sm h-9"
+                placeholder="e.g. 31/32"
               />
-              <p className="text-[10px] text-muted-foreground mt-1">
-                {subject.type === 'HL' ? 'Required for HL' : 'Optional if % provided'}
-              </p>
             </div>
           </div>
 
-          <div className="space-y-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0">
-            <Label htmlFor="rawGrade" className="text-sm sm:text-right">
-              Raw Score
-            </Label>
-            <Input
-              id="rawGrade"
-              value={rawGrade}
-              onChange={(e) => setRawGrade(e.target.value)}
-              className="col-span-3 text-sm h-9"
-              placeholder="e.g. 31/32"
-            />
-          </div>
+          <div className="grid grid-cols-2 gap-3 sm:gap-4">
+            <div className="space-y-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0 sm:col-span-2">
+              <Label htmlFor="rawPercent" className="text-sm sm:text-right sm:col-span-1">
+                Percent
+              </Label>
+              <Input
+                id="rawPercent"
+                type="number"
+                step="any"
+                value={rawPercent}
+                onChange={(e) => handlePercentChange(e.target.value)}
+                className="col-span-3 text-sm h-9"
+                placeholder="%"
+              />
+            </div>
 
-          <div className="space-y-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0">
-            <Label htmlFor="rawPercent" className="text-sm sm:text-right">
-              Percentage
-            </Label>
-            <Input
-              id="rawPercent"
-              type="number"
-              step="any"
-              value={rawPercent}
-              onChange={(e) => handlePercentChange(e.target.value)}
-              className="col-span-3 text-sm h-9"
-              placeholder="e.g. 96.8"
-            />
-          </div>
-
-          <div className="space-y-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0">
-            <Label htmlFor="date" className="text-sm sm:text-right">
-              Date
-            </Label>
-            <Input
-              id="date"
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="col-span-3 text-sm h-9"
-              required
-            />
+            <div className="space-y-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0 sm:col-span-2">
+              <Label htmlFor="date" className="text-sm sm:text-right sm:col-span-1">
+                Date
+              </Label>
+              <Input
+                id="date"
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="col-span-3 text-sm h-9"
+                required
+              />
+            </div>
           </div>
 
           <div className="space-y-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0">
@@ -1084,7 +1089,7 @@ function EditAssessmentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px] p-4 sm:p-6">
+      <DialogContent className="sm:max-w-[425px] p-4 sm:p-6 max-h-[75vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-base sm:text-lg">Edit Assessment</DialogTitle>
           <DialogDescription className="text-xs sm:text-sm">
@@ -1124,64 +1129,68 @@ function EditAssessmentDialog({
             </div>
           </div>
 
-          <div className="space-y-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0">
-            <Label htmlFor="edit-ibGrade" className="text-sm sm:text-right">
-              IB Grade
-            </Label>
-            <div className="col-span-3">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4">
+            <div className="space-y-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0 sm:col-span-2">
+              <Label htmlFor="edit-ibGrade" className="text-sm sm:text-right sm:col-span-1">
+                IB Grade
+              </Label>
+              <div className="col-span-3">
+                <Input
+                  id="edit-ibGrade"
+                  type="number"
+                  min="1"
+                  max="7"
+                  value={ibGrade}
+                  onChange={(e) => setIbGrade(e.target.value)}
+                  placeholder="1-7"
+                  className="text-sm h-9"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0 sm:col-span-2">
+              <Label htmlFor="edit-rawGrade" className="text-sm sm:text-right sm:col-span-1">
+                Raw Score
+              </Label>
               <Input
-                id="edit-ibGrade"
-                type="number"
-                min="1"
-                max="7"
-                value={ibGrade}
-                onChange={(e) => setIbGrade(e.target.value)}
-                placeholder="1-7"
-                className="text-sm h-9"
+                id="edit-rawGrade"
+                value={rawGrade}
+                onChange={(e) => setRawGrade(e.target.value)}
+                className="col-span-3 text-sm h-9"
+                placeholder="e.g. 31/32"
               />
             </div>
           </div>
 
-          <div className="space-y-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0">
-            <Label htmlFor="edit-rawGrade" className="text-sm sm:text-right">
-              Raw Score
-            </Label>
-            <Input
-              id="edit-rawGrade"
-              value={rawGrade}
-              onChange={(e) => setRawGrade(e.target.value)}
-              className="col-span-3 text-sm h-9"
-              placeholder="e.g. 31/32"
-            />
-          </div>
+          <div className="grid grid-cols-2 gap-3 sm:gap-4">
+            <div className="space-y-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0 sm:col-span-2">
+              <Label htmlFor="edit-rawPercent" className="text-sm sm:text-right sm:col-span-1">
+                Percent
+              </Label>
+              <Input
+                id="edit-rawPercent"
+                type="number"
+                step="any"
+                value={rawPercent}
+                onChange={(e) => handlePercentChange(e.target.value)}
+                className="col-span-3 text-sm h-9"
+                placeholder="%"
+              />
+            </div>
 
-          <div className="space-y-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0">
-            <Label htmlFor="edit-rawPercent" className="text-sm sm:text-right">
-              Percentage
-            </Label>
-            <Input
-              id="edit-rawPercent"
-              type="number"
-              step="any"
-              value={rawPercent}
-              onChange={(e) => handlePercentChange(e.target.value)}
-              className="col-span-3 text-sm h-9"
-              placeholder="e.g. 96.8"
-            />
-          </div>
-
-          <div className="space-y-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0">
-            <Label htmlFor="edit-date" className="text-sm sm:text-right">
-              Date
-            </Label>
-            <Input
-              id="edit-date"
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="col-span-3 text-sm h-9"
-              required
-            />
+            <div className="space-y-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0 sm:col-span-2">
+              <Label htmlFor="edit-date" className="text-sm sm:text-right sm:col-span-1">
+                Date
+              </Label>
+              <Input
+                id="edit-date"
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="col-span-3 text-sm h-9"
+                required
+              />
+            </div>
           </div>
 
           <div className="space-y-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0">
