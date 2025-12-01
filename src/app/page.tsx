@@ -281,7 +281,7 @@ export default function Home() {
 
   // Trends view
   if (showTrends) {
-    return <TrendsView key={JSON.stringify(subjects)} subjects={subjects} onBack={() => setShowTrends(false)} onShowHelp={() => setShowHelp(true)} />;
+    return <TrendsView key={JSON.stringify(subjects)} subjects={subjects} onBack={() => setShowTrends(false)} onShowHelp={() => setShowHelp(true)} supabase={supabase} />;
   }
 
   // Help view
@@ -365,15 +365,15 @@ export default function Home() {
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex gap-2">
-            <Button variant="outline" onClick={() => setShowTrends(true)}>
+            <Button variant="outline" onClick={() => setShowTrends(true)} className="hover:bg-accent hover:text-accent-foreground active:bg-accent">
               <TrendingUp className="mr-2 h-4 w-4" />
               View Trends
             </Button>
-            <Button variant="outline" onClick={() => window.location.href = '/feedback'}>
+            <Button variant="outline" onClick={() => window.location.href = '/feedback'} className="hover:bg-accent hover:text-accent-foreground active:bg-accent">
               <MessageSquare className="mr-2 h-4 w-4" />
               Feedback
             </Button>
-            <Button variant="ghost" onClick={() => supabase.auth.signOut()}>
+            <Button variant="ghost" onClick={() => supabase.auth.signOut()} className="hover:bg-accent hover:text-accent-foreground active:bg-accent">
               Sign Out
             </Button>
           </div>
@@ -605,7 +605,7 @@ function SubjectGradeCard({
         </div>
       </DialogTrigger>
 
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <div className="flex items-center justify-between gap-4 pr-8">
             <DialogTitle className="flex items-center gap-2">
@@ -650,13 +650,14 @@ function SubjectGradeCard({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <h3 className="font-medium">Assessments</h3>
-            <div className="flex gap-2">
+            <div className="flex gap-2 w-full sm:w-auto">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => onManageCategories(subject)}
+                className="flex-1 sm:flex-none"
               >
                 <TrendingUp className="h-3 w-3 mr-2" />
                 Categories
@@ -1542,7 +1543,7 @@ function HelpView({ onBack }: { onBack: () => void }) {
   );
 }
 
-function TrendsView({ subjects, onBack, onShowHelp }: { subjects: Subject[], onBack: () => void, onShowHelp: () => void }) {
+function TrendsView({ subjects, onBack, onShowHelp, supabase }: { subjects: Subject[], onBack: () => void, onShowHelp: () => void, supabase: any }) {
   // Calculate trend data: array of {date, predictedGrade, subjectGrades: {[subjectName]: grade}}
   const trendData = calculateTrendData(subjects);
 
@@ -1586,10 +1587,46 @@ function TrendsView({ subjects, onBack, onShowHelp }: { subjects: Subject[], onB
               <Info className="h-4 w-4" />
             </Button>
           </div>
-          <Button variant="outline" onClick={onBack}>
-            <HomeIcon className="mr-2 h-4 w-4" />
-            Back to Dashboard
-          </Button>
+
+          {/* Desktop Navigation */}
+          <div className="hidden md:flex gap-2">
+            <Button variant="outline" onClick={onBack} className="hover:bg-accent hover:text-accent-foreground active:bg-accent">
+              <HomeIcon className="mr-2 h-4 w-4" />
+              Back to Dashboard
+            </Button>
+          </div>
+
+          {/* Mobile Navigation */}
+          <Sheet>
+            <SheetTrigger asChild>
+              <button className="md:hidden h-10 w-10 inline-flex items-center justify-center">
+                <Menu className="h-6 w-6" />
+              </button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-full border-none p-0 [&>button]:!h-10 [&>button]:!w-10 [&>button>svg]:!h-6 [&>button>svg]:!w-6 [&>button]:!top-[24px] [&>button]:!right-[calc(50vw-640px+16px)] [&>button]:hover:bg-transparent [&>button]:hover:opacity-70 max-[1280px]:[&>button]:!right-4">
+              <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
+              <div className="flex flex-col gap-1 p-8 pt-12">
+                <button
+                  onClick={onBack}
+                  className="text-left text-2xl font-medium py-3 px-4 rounded-md outline-none"
+                >
+                  Back to Dashboard
+                </button>
+                <button
+                  onClick={() => window.location.href = '/feedback'}
+                  className="text-left text-2xl font-medium py-3 px-4 rounded-md outline-none"
+                >
+                  Feedback
+                </button>
+                <button
+                  onClick={() => supabase.auth.signOut()}
+                  className="text-left text-2xl font-medium py-3 px-4 rounded-md outline-none"
+                >
+                  Sign Out
+                </button>
+              </div>
+            </SheetContent>
+          </Sheet>
         </div>
       </header>
 
