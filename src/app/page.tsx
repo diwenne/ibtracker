@@ -421,7 +421,7 @@ export default function Home() {
             <Button
               variant="ghost"
               size="icon"
-              className="h-5 w-5 text-muted-foreground hover:text-foreground"
+              className="h-5 w-5 text-muted-foreground hover:text-foreground hover:bg-transparent active:bg-transparent"
               onClick={handleRecalculateAll}
               disabled={isRecalculating || subjects.length === 0}
               title="Recalculate all AI predictions"
@@ -613,7 +613,7 @@ function SubjectGradeCard({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-6 w-6 text-muted-foreground hover:text-foreground border-none outline-none focus-visible:ring-0 ring-0"
+                className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-transparent active:bg-transparent border-none outline-none focus-visible:ring-0 ring-0"
                 onClick={() => setIsEditingSubject(true)}
               >
                 <Pencil className="h-3 w-3" />
@@ -621,7 +621,7 @@ function SubjectGradeCard({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-transparent active:bg-transparent"
                 onClick={handleManualRecalculate}
                 disabled={isPredicting || subject.assessments.length === 0}
                 title="Recalculate AI prediction"
