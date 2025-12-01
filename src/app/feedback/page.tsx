@@ -176,21 +176,27 @@ export default function FeedbackPage() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid grid-cols-2 gap-3">
-            {feedbackList.map((item) => (
-              <Card key={item.id} className="rounded-lg">
-                <CardContent className="p-5 pt-4">
-                  <div className="flex flex-col gap-0.5 mb-3">
-                    <span className="text-xs font-medium text-foreground/80 truncate" title={item.userEmail || 'Anonymous'}>
-                      {item.userEmail || 'Anonymous'}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground">
-                      {formatDate(item.createdAt)}
-                    </span>
-                  </div>
-                  <p className="text-sm whitespace-pre-wrap">{item.content}</p>
-                </CardContent>
-              </Card>
+          <div className="flex gap-3 items-start">
+            {[0, 1].map((colIndex) => (
+              <div key={colIndex} className="flex-1 min-w-0 space-y-3">
+                {feedbackList
+                  .filter((_, i) => i % 2 === colIndex)
+                  .map((item) => (
+                    <Card key={item.id} className="rounded-lg">
+                      <CardContent className="p-5 pt-4">
+                        <div className="flex flex-col gap-0.5 mb-3">
+                          <span className="text-xs font-medium text-foreground/80 truncate" title={item.userEmail || 'Anonymous'}>
+                            {item.userEmail || 'Anonymous'}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {formatDate(item.createdAt)}
+                          </span>
+                        </div>
+                        <p className="text-sm whitespace-pre-wrap break-words">{item.content}</p>
+                      </CardContent>
+                    </Card>
+                  ))}
+              </div>
             ))}
           </div>
         )}
