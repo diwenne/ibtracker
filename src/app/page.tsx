@@ -365,15 +365,15 @@ export default function Home() {
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex gap-2">
-            <Button variant="outline" onClick={() => setShowTrends(true)} className="hover:bg-accent hover:text-accent-foreground active:bg-accent">
+            <Button variant="outline" onClick={() => setShowTrends(true)}>
               <TrendingUp className="mr-2 h-4 w-4" />
               View Trends
             </Button>
-            <Button variant="outline" onClick={() => window.location.href = '/feedback'} className="hover:bg-accent hover:text-accent-foreground active:bg-accent">
+            <Button variant="outline" onClick={() => window.location.href = '/feedback'}>
               <MessageSquare className="mr-2 h-4 w-4" />
               Feedback
             </Button>
-            <Button variant="ghost" onClick={() => supabase.auth.signOut()} className="hover:bg-accent hover:text-accent-foreground active:bg-accent">
+            <Button variant="ghost" onClick={() => supabase.auth.signOut()}>
               Sign Out
             </Button>
           </div>
@@ -1590,7 +1590,7 @@ function TrendsView({ subjects, onBack, onShowHelp, supabase }: { subjects: Subj
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex gap-2">
-            <Button variant="outline" onClick={onBack} className="hover:bg-accent hover:text-accent-foreground active:bg-accent">
+            <Button variant="outline" onClick={onBack}>
               <HomeIcon className="mr-2 h-4 w-4" />
               Back to Dashboard
             </Button>
