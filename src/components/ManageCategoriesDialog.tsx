@@ -14,6 +14,7 @@ import {
 import { Subject, Category } from "@/lib/types";
 import { api } from "@/lib/api";
 import { normalizeWeights } from "@/lib/prediction";
+import { getTeacherConfig } from "@/lib/teachers";
 
 interface ManageCategoriesDialogProps {
     subject: Subject;
@@ -36,6 +37,9 @@ export function ManageCategoriesDialog({
     const [editName, setEditName] = useState("");
     const [editWeight, setEditWeight] = useState("");
 
+    // Check if categories are read-only (teacher-specific)
+    const isReadOnly = !!getTeacherConfig(subject.teacher || null);
+
     useEffect(() => {
         if (open) {
             setCategories(subject.categories || []);
@@ -48,7 +52,10 @@ export function ManageCategoriesDialog({
     const handleAdd = async () => {
         if (!newCategoryName.trim()) return;
         const weight = parseFloat(newCategoryWeight);
-        if (isNaN(weight) || weight <= 0 || weight > 1) return;
+        if (isNaN(weight) || weight <= 0 || weight > 1) {
+            alert('Weight must be greater than 0 and at most 1 (0 < weight ≤ 1)');
+            return;
+        }
 
         // Check if adding this weight would exceed 1.0
         if (totalWeight + weight > 1.0) {
@@ -97,7 +104,10 @@ export function ManageCategoriesDialog({
     const saveEdit = async (id: string) => {
         if (!editName.trim()) return;
         const weight = parseFloat(editWeight);
-        if (isNaN(weight) || weight <= 0 || weight > 1) return;
+        if (isNaN(weight) || weight <= 0 || weight > 1) {
+            alert('Weight must be greater than 0 and at most 1 (0 < weight ≤ 1)');
+            return;
+        }
 
         // Check if updating this weight would exceed 1.0
         const otherCategoriesWeight = categories
@@ -126,9 +136,13 @@ export function ManageCategoriesDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-[600px]">
                 <DialogHeader>
-                    <DialogTitle>Manage Categories for {subject.name}</DialogTitle>
+                    <DialogTitle>{isReadOnly ? 'View' : 'Manage'} Categories for {subject.name}</DialogTitle>
                     <DialogDescription>
-                        Define assessment categories with percentage weights (0.0-1.0). Total weight cannot exceed 100%.
+                        {isReadOnly ? (
+                            <>Teacher-specific categories (read-only). These categories are defined by {subject.teacher} and cannot be edited.</>
+                        ) : (
+                            <>Define assessment categories with percentage weights (0.0-1.0). Total weight cannot exceed 100%.</>
+                        )}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -156,15 +170,15 @@ export function ManageCategoriesDialog({
 
                     {/* List Categories */}
                     <div className="space-y-2">
-                        <div className="grid grid-cols-12 gap-2 text-sm font-medium text-muted-foreground mb-2">
+                        <div className={`grid ${isReadOnly ? 'grid-cols-10' : 'grid-cols-12'} gap-2 text-sm font-medium text-muted-foreground mb-2`}>
                             <div className="col-span-6">Name</div>
                             <div className="col-span-4">Weight (%)</div>
-                            <div className="col-span-2">Actions</div>
+                            {!isReadOnly && <div className="col-span-2">Actions</div>}
                         </div>
 
                         {categories.map((cat) => (
-                            <div key={cat.id} className="grid grid-cols-12 gap-2 items-center">
-                                {editingId === cat.id ? (
+                            <div key={cat.id} className={`grid ${isReadOnly ? 'grid-cols-10' : 'grid-cols-12'} gap-2 items-center`}>
+                                {editingId === cat.id && !isReadOnly ? (
                                     <>
                                         <div className="col-span-6">
                                             <Input
@@ -179,7 +193,7 @@ export function ManageCategoriesDialog({
                                                 value={editWeight}
                                                 onChange={(e) => setEditWeight(e.target.value)}
                                                 className="h-8"
-                                                min="0.01"
+                                                min="0.001"
                                                 max="1"
                                                 step="0.01"
                                                 placeholder="0.1 = 10%"
@@ -200,14 +214,16 @@ export function ManageCategoriesDialog({
                                         <div className="col-span-4 text-sm font-medium">
                                             {(cat.rawWeight * 100).toFixed(1)}%
                                         </div>
-                                        <div className="col-span-2 flex gap-1">
-                                            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => startEdit(cat)}>
-                                                <Pencil className="h-3 w-3" />
-                                            </Button>
-                                            <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={() => handleDelete(cat.id)}>
-                                                <Trash2 className="h-3 w-3" />
-                                            </Button>
-                                        </div>
+                                        {!isReadOnly && (
+                                            <div className="col-span-2 flex gap-1">
+                                                <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => startEdit(cat)}>
+                                                    <Pencil className="h-3 w-3" />
+                                                </Button>
+                                                <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={() => handleDelete(cat.id)}>
+                                                    <Trash2 className="h-3 w-3" />
+                                                </Button>
+                                            </div>
+                                        )}
                                     </>
                                 )}
                             </div>
@@ -220,38 +236,40 @@ export function ManageCategoriesDialog({
                         )}
                     </div>
 
-                    <div className="border-t pt-4">
-                        <Label className="text-sm font-medium mb-2 block">Add New Category</Label>
-                        <div className="grid grid-cols-12 gap-2">
-                            <div className="col-span-6">
-                                <Input
-                                    placeholder="e.g. Exam, IA"
-                                    value={newCategoryName}
-                                    onChange={(e) => setNewCategoryName(e.target.value)}
-                                />
-                            </div>
-                            <div className="col-span-6">
-                                <div className="flex gap-2">
+                    {!isReadOnly && (
+                        <div className="border-t pt-4">
+                            <Label className="text-sm font-medium mb-2 block">Add New Category</Label>
+                            <div className="grid grid-cols-12 gap-2">
+                                <div className="col-span-6">
                                     <Input
-                                        type="number"
-                                        placeholder="0.1 = 10%"
-                                        value={newCategoryWeight}
-                                        onChange={(e) => setNewCategoryWeight(e.target.value)}
-                                        min="0.01"
-                                        max="1"
-                                        step="0.01"
+                                        placeholder="e.g. Exam, IA"
+                                        value={newCategoryName}
+                                        onChange={(e) => setNewCategoryName(e.target.value)}
                                     />
-                                    <Button onClick={handleAdd} disabled={loading || !newCategoryName} className="whitespace-nowrap">
-                                        <Plus className="h-4 w-4 mr-2" /> Add
-                                    </Button>
+                                </div>
+                                <div className="col-span-6">
+                                    <div className="flex gap-2">
+                                        <Input
+                                            type="number"
+                                            placeholder="0.1 = 10%"
+                                            value={newCategoryWeight}
+                                            onChange={(e) => setNewCategoryWeight(e.target.value)}
+                                            min="0.001"
+                                            max="1"
+                                            step="0.01"
+                                        />
+                                        <Button onClick={handleAdd} disabled={loading || !newCategoryName} className="whitespace-nowrap">
+                                            <Plus className="h-4 w-4 mr-2" /> Add
+                                        </Button>
+                                    </div>
                                 </div>
                             </div>
+                            <p className="text-xs text-muted-foreground mt-2">
+                                <AlertCircle className="h-3 w-3 inline mr-1" />
+                                Enter weights as decimals (0.1 = 10%, 0.25 = 25%, etc.). Total cannot exceed 1.0 (100%). Uncategorized assessments get the remaining weight.
+                            </p>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-2">
-                            <AlertCircle className="h-3 w-3 inline mr-1" />
-                            Enter weights as decimals (0.1 = 10%, 0.25 = 25%, etc.). Total cannot exceed 1.0 (100%). Uncategorized assessments get the remaining weight.
-                        </p>
-                    </div>
+                    )}
                 </div>
 
                 <DialogFooter>

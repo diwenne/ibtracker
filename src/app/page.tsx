@@ -16,6 +16,7 @@ import { createClient } from "@/lib/supabase";
 import Auth from "@/components/Auth";
 import { ManageCategoriesDialog } from "@/components/ManageCategoriesDialog";
 import { calculateLocalPrediction } from "@/lib/prediction";
+import { getTeacherConfig, getAllTeachers } from "@/lib/teachers";
 
 // Parse MM/DD/YYYY format to YYYY-MM-DD
 function parseDateInput(input: string): { valid: boolean; date: string; error?: string } {
@@ -212,13 +213,34 @@ export default function Home() {
   };
 
   const updateSubject = async (id: string, name: string, type: SubjectType, teacher?: string | null) => {
+    // If switching to a teacher with specific categories, handle category reset
+    const teacherConfig = getTeacherConfig(teacher || null);
+    if (teacherConfig) {
+      const subject = subjects.find(s => s.id === id);
+      if (subject) {
+        // Delete all existing categories
+        for (const category of subject.categories) {
+          await api.deleteCategory(category.id, supabase);
+        }
+
+        // Clear category assignments from all assessments
+        for (const assessment of subject.assessments) {
+          if (assessment.categoryId) {
+            await api.updateAssessment(assessment.id, { ...assessment, categoryId: null }, supabase);
+          }
+        }
+
+        // Create teacher-specific categories
+        for (const cat of teacherConfig.categories) {
+          await api.createCategory(id, cat.name, cat.weight, supabase);
+        }
+      }
+    }
+
     const updated = await api.updateSubject(id, name, type, teacher, supabase);
     if (updated) {
-      setSubjects(subjects.map(sub =>
-        sub.id === id
-          ? { ...sub, name: updated.name, type: updated.type, teacher: updated.teacher }
-          : sub
-      ));
+      // Reload all subjects to get updated categories and assessments
+      await loadSubjects();
     }
   };
 
@@ -511,6 +533,43 @@ function SubjectGradeCard({
   const [editingAssessment, setEditingAssessment] = useState<Assessment | null>(null);
   const [isEditingSubject, setIsEditingSubject] = useState(false);
   const [isPredicting, setIsPredicting] = useState(false);
+  const [showTeacherConfirm, setShowTeacherConfirm] = useState(false);
+  const [pendingTeacher, setPendingTeacher] = useState<string | null>(null);
+  const [isConfirmingTeacher, setIsConfirmingTeacher] = useState(false);
+
+  const handleTeacherChange = (value: string) => {
+    const newTeacher = value === 'general' ? null : value;
+    const currentTeacherConfig = getTeacherConfig(subject.teacher || null);
+
+    // If switching TO a teacher with specific categories
+    const teacherConfig = getTeacherConfig(newTeacher);
+    if (teacherConfig && (subject.categories.length > 0 || subject.assessments.length > 0)) {
+      setPendingTeacher(newTeacher);
+      setShowTeacherConfirm(true);
+    }
+    // If switching FROM a teacher back to general
+    else if (!newTeacher && currentTeacherConfig && subject.assessments.length > 0) {
+      setPendingTeacher(newTeacher);
+      setShowTeacherConfirm(true);
+    }
+    // Otherwise, just update directly
+    else {
+      onUpdateSubject(subject.id, subject.name, subject.type, newTeacher);
+    }
+  };
+
+  const confirmTeacherChange = async () => {
+    if (pendingTeacher !== undefined && !isConfirmingTeacher) {
+      setIsConfirmingTeacher(true);
+      try {
+        await onUpdateSubject(subject.id, subject.name, subject.type, pendingTeacher);
+        setShowTeacherConfirm(false);
+        setPendingTeacher(null);
+      } finally {
+        setIsConfirmingTeacher(false);
+      }
+    }
+  };
 
   const handleManualRecalculate = async () => {
     if (isPredicting || subject.assessments.length === 0) return;
@@ -527,8 +586,10 @@ function SubjectGradeCard({
   };
 
   // Auto-recalculate when dirty flag changes (after CRUD operations)
+  // Skip AI prediction if teacher-specific grading is enabled
   useEffect(() => {
-    if (subject.predictionDirty && !isPredicting && subject.assessments.length > 0) {
+    const hasTeacher = !!subject.teacher;
+    if (subject.predictionDirty && !isPredicting && subject.assessments.length > 0 && !hasTeacher) {
       setIsPredicting(true);
       api.predictGrade(subject, subject.assessments, subject.categories || [])
         .then((result) => {
@@ -538,11 +599,13 @@ function SubjectGradeCard({
         })
         .finally(() => setIsPredicting(false));
     }
-  }, [subject.predictionDirty, subject.id]);
+  }, [subject.predictionDirty, subject.id, subject.teacher]);
 
   // Force recalculation on mount for all subjects (page refresh)
+  // Skip AI prediction if teacher-specific grading is enabled
   useEffect(() => {
-    if (subject.assessments.length > 0 && !isPredicting) {
+    const hasTeacher = !!subject.teacher;
+    if (subject.assessments.length > 0 && !isPredicting && !hasTeacher) {
       const timer = setTimeout(() => {
         if (!subject.aiPredictedGrade && !isPredicting) {
           setIsPredicting(true);
@@ -560,19 +623,41 @@ function SubjectGradeCard({
     }
   }, []); // Only run on mount
 
-  // Calculate local prediction
+  // Check for teacher-specific calculation first
+  const teacherConfig = getTeacherConfig(subject.teacher || null);
+  const teacherCalculation = teacherConfig?.calculateGrade
+    ? teacherConfig.calculateGrade(subject, subject.assessments)
+    : null;
+
+  // Calculate local prediction as fallback
   const localPrediction = calculateLocalPrediction(subject, subject.assessments, subject.categories || []);
 
   // Determine which prediction to show
-  // For SL subjects, ALWAYS use local calculation (AI is too unreliable with weights)
-  // For HL subjects, use AI if available (trends/adjustments are useful)
-  const displayGrade = subject.type === 'SL'
-    ? (localPrediction?.grade || grade)
-    : (subject.aiPredictedGrade || localPrediction?.grade || grade);
-  const isAi = subject.type === 'HL' && !!subject.aiPredictedGrade;
-  const predictionDetails = subject.type === 'SL'
-    ? localPrediction?.details
-    : (subject.aiExplanation || localPrediction?.details);
+  // Priority: Teacher calculation > AI (for HL) > Local calculation
+  let displayGrade: number;
+  let displayPercentage: number;
+  let isTeacher = false;
+  let isAi = false;
+  let predictionDetails: string | undefined;
+
+  if (teacherCalculation) {
+    // Use teacher-specific calculation
+    displayGrade = teacherCalculation.grade;
+    displayPercentage = teacherCalculation.percentage;
+    predictionDetails = teacherCalculation.explanation;
+    isTeacher = true;
+  } else if (subject.type === 'SL') {
+    // For SL subjects, ALWAYS use local calculation (AI is too unreliable with weights)
+    displayGrade = localPrediction?.grade || grade;
+    displayPercentage = percentage;
+    predictionDetails = localPrediction?.details;
+  } else {
+    // For HL subjects, use AI if available (trends/adjustments are useful)
+    displayGrade = subject.aiPredictedGrade || localPrediction?.grade || grade;
+    displayPercentage = percentage;
+    isAi = !!subject.aiPredictedGrade;
+    predictionDetails = subject.aiExplanation || localPrediction?.details;
+  }
 
   // Determine color based on grade quality
   const getGradeColor = (grade: number) => {
@@ -596,8 +681,9 @@ function SubjectGradeCard({
             <div className="text-center">
               <p className="text-sm font-medium text-foreground/80">{subject.name}</p>
               <p className="text-xs text-muted-foreground/60">
-                {subject.type}{subject.assessments.length === 0 ? ' • No data' : percentage > 0 ? ` • ${percentage.toFixed(0)}%` : ''}
-                {isAi && ' • AI'}
+                {subject.type}{subject.assessments.length === 0 ? ' • No data' : displayPercentage > 0 ? ` • ${displayPercentage.toFixed(0)}%` : ''}
+                {isTeacher && subject.teacher && ` • ${subject.teacher.toUpperCase()}`}
+                {isAi && !isTeacher && ' • AI'}
               </p>
             </div>
             {isPredicting && <span className="text-[10px] text-muted-foreground animate-pulse">Updating...</span>}
@@ -637,8 +723,9 @@ function SubjectGradeCard({
               ) : (
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center gap-2">
-                    <span>Predicted Grade: <strong>{displayGrade}</strong> {percentage > 0 && `(${percentage.toFixed(1)}%)`}</span>
-                    {isAi && <span className="text-[10px] bg-secondary px-1.5 py-0.5 rounded">AI</span>}
+                    <span>Predicted Grade: <strong>{displayGrade}</strong> {displayPercentage > 0 && `(${displayPercentage.toFixed(1)}%)`}</span>
+                    {isTeacher && subject.teacher && <span className="text-[10px] bg-blue-500 text-white px-1.5 py-0.5 rounded">{subject.teacher.toUpperCase()}</span>}
+                    {isAi && !isTeacher && <span className="text-[10px] bg-secondary px-1.5 py-0.5 rounded">AI</span>}
                   </div>
                   {predictionDetails && (
                     <span className="text-xs text-muted-foreground">{predictionDetails}</span>
@@ -649,23 +736,39 @@ function SubjectGradeCard({
           </DialogDescription>
         </DialogHeader>
 
+        {/* Teacher Note */}
+        {(() => {
+          const teacherConfig = getTeacherConfig(subject.teacher || null);
+          if (teacherConfig) {
+            return (
+              <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-sm">
+                <p className="text-blue-900 dark:text-blue-100">
+                  <strong>{teacherConfig.displayName}:</strong> {teacherConfig.note}
+                </p>
+              </div>
+            );
+          }
+          return null;
+        })()}
+
         <div className="space-y-4 py-2 sm:py-4">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <h3 className="font-medium">Assessments</h3>
             <div className="flex gap-2 w-full sm:w-auto">
               <Select
                 value={subject.teacher || 'general'}
-                onValueChange={(value) => {
-                  const newTeacher = value === 'general' ? null : value;
-                  onUpdateSubject(subject.id, subject.name, subject.type, newTeacher);
-                }}
+                onValueChange={handleTeacherChange}
               >
                 <SelectTrigger className="h-8 text-xs w-auto min-w-[140px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="general">General Algorithm</SelectItem>
-                  <SelectItem value="Greenwood">Greenwood (PMSS; Physics)</SelectItem>
+                  {getAllTeachers().map(teacher => (
+                    <SelectItem key={teacher.id} value={teacher.id}>
+                      {teacher.displayName}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               <Button
@@ -772,6 +875,83 @@ function SubjectGradeCard({
           onOpenChange={setIsEditingSubject}
           onUpdate={onUpdateSubject}
         />
+
+        {/* Teacher Change Confirmation Dialog */}
+        <Dialog open={showTeacherConfirm} onOpenChange={setShowTeacherConfirm}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {pendingTeacher ? 'Switch to Teacher-Specific Grading?' : 'Switch to General Algorithm?'}
+              </DialogTitle>
+              <DialogDescription>
+                {pendingTeacher ? (
+                  <>Selecting {pendingTeacher} will:</>
+                ) : (
+                  <>Switching back to General Algorithm will:</>
+                )}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 py-4">
+              <div className="space-y-2 text-sm">
+                {pendingTeacher ? (
+                  <>
+                    <p className="flex items-start gap-2">
+                      <span className="text-destructive">•</span>
+                      <span>Delete all existing categories</span>
+                    </p>
+                    <p className="flex items-start gap-2">
+                      <span className="text-destructive">•</span>
+                      <span>Create teacher-specific categories</span>
+                    </p>
+                    <p className="flex items-start gap-2">
+                      <span className="text-destructive">•</span>
+                      <span>Remove category assignments from all assessments</span>
+                    </p>
+                    <p className="flex items-start gap-2">
+                      <span className="text-yellow-600">•</span>
+                      <span>You&apos;ll need to reassign categories to your assessments</span>
+                    </p>
+                    <p className="flex items-start gap-2">
+                      <span className="text-muted-foreground">•</span>
+                      <span className="text-muted-foreground">Categories cannot be edited under teacher-specific grading</span>
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="flex items-start gap-2">
+                      <span className="text-yellow-600">•</span>
+                      <span>Keep teacher-specific categories (Tests, Labs, etc.)</span>
+                    </p>
+                    <p className="flex items-start gap-2">
+                      <span className="text-yellow-600">•</span>
+                      <span>Categories will remain assigned to assessments</span>
+                    </p>
+                    <p className="flex items-start gap-2">
+                      <span className="text-blue-600">•</span>
+                      <span>You can now edit and manage categories freely</span>
+                    </p>
+                    <p className="flex items-start gap-2">
+                      <span className="text-muted-foreground">•</span>
+                      <span className="text-muted-foreground">If you switch back to {subject.teacher}, you&apos;ll need to reassign categories to all assessments</span>
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => setShowTeacherConfirm(false)} disabled={isConfirmingTeacher}>
+                Cancel
+              </Button>
+              <Button
+                variant={pendingTeacher ? "destructive" : "default"}
+                onClick={confirmTeacherChange}
+                disabled={isConfirmingTeacher}
+              >
+                {isConfirmingTeacher ? 'Loading...' : 'Continue'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </DialogContent>
     </Dialog >
   );
@@ -2141,7 +2321,11 @@ function EditSubjectDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="general">General Algorithm</SelectItem>
-                <SelectItem value="Greenwood">Greenwood (PMSS; Physics)</SelectItem>
+                {getAllTeachers().map(teacher => (
+                  <SelectItem key={teacher.id} value={teacher.id}>
+                    {teacher.displayName}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
