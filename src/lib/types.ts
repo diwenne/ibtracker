@@ -35,6 +35,7 @@ export interface Subject {
     aiPredictedGrade?: number | null;
     aiExplanation?: string | null;
     predictionDirty?: boolean;
+    teacher?: string | null;
 }
 
 // Helper to parse raw grade fraction like "31/32"

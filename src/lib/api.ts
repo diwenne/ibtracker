@@ -60,6 +60,7 @@ export const api = {
                 aiPredictedGrade: sub.ai_predicted_grade,
                 aiExplanation: sub.ai_explanation,
                 predictionDirty: sub.prediction_dirty,
+                teacher: sub.teacher,
                 categories: (sub.categories || []).map((cat: any) => ({
                     id: cat.id,
                     name: cat.name,
@@ -127,11 +128,18 @@ export const api = {
         return true;
     },
 
-    updateSubject: async (id: string, name: string, type: SubjectType, client?: SupabaseClient): Promise<Subject | null> => {
+    updateSubject: async (id: string, name: string, type: SubjectType, teacher?: string | null, client?: SupabaseClient): Promise<Subject | null> => {
         const supabase = client || createClient();
+        const updateData: any = { name, type, prediction_dirty: true }; // Mark dirty on update
+
+        // Only update teacher if it's provided (could be null to clear)
+        if (teacher !== undefined) {
+            updateData.teacher = teacher;
+        }
+
         const { data, error } = await supabase
             .from('subjects')
-            .update({ name, type, prediction_dirty: true }) // Mark dirty on update
+            .update(updateData)
             .eq('id', id)
             .select()
             .single();
@@ -145,6 +153,7 @@ export const api = {
             id: data.id,
             name: data.name,
             type: data.type as SubjectType,
+            teacher: data.teacher,
             assessments: [], // We don't need to return assessments here
             categories: []
         };

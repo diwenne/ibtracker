@@ -211,12 +211,12 @@ export default function Home() {
     }
   };
 
-  const updateSubject = async (id: string, name: string, type: SubjectType) => {
-    const updated = await api.updateSubject(id, name, type, supabase);
+  const updateSubject = async (id: string, name: string, type: SubjectType, teacher?: string | null) => {
+    const updated = await api.updateSubject(id, name, type, teacher, supabase);
     if (updated) {
       setSubjects(subjects.map(sub =>
         sub.id === id
-          ? { ...sub, name: updated.name, type: updated.type }
+          ? { ...sub, name: updated.name, type: updated.type, teacher: updated.teacher }
           : sub
       ));
     }
@@ -503,7 +503,7 @@ function SubjectGradeCard({
   onAddAssessment: (sid: string, assessment: Omit<Assessment, 'id'>) => void;
   onUpdateAssessment: (sid: string, aid: string, assessment: Omit<Assessment, 'id'>) => void;
   onDeleteAssessment: (sid: string, aid: string) => void;
-  onUpdateSubject: (id: string, name: string, type: SubjectType) => void;
+  onUpdateSubject: (id: string, name: string, type: SubjectType, teacher?: string | null) => void;
   onManageCategories: (subject: Subject) => void;
   onRefresh: () => void;
 }) {
@@ -649,12 +649,25 @@ function SubjectGradeCard({
           </DialogDescription>
         </DialogHeader>
 
-
-
         <div className="space-y-4 py-2 sm:py-4">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <h3 className="font-medium">Assessments</h3>
             <div className="flex gap-2 w-full sm:w-auto">
+              <Select
+                value={subject.teacher || 'general'}
+                onValueChange={(value) => {
+                  const newTeacher = value === 'general' ? null : value;
+                  onUpdateSubject(subject.id, subject.name, subject.type, newTeacher);
+                }}
+              >
+                <SelectTrigger className="h-8 text-xs w-auto min-w-[140px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="general">General Algorithm</SelectItem>
+                  <SelectItem value="Greenwood">Greenwood (PMSS; Physics)</SelectItem>
+                </SelectContent>
+              </Select>
               <Button
                 variant="outline"
                 size="sm"
@@ -2068,23 +2081,25 @@ function EditSubjectDialog({
   subject: Subject;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onUpdate: (id: string, name: string, type: SubjectType) => void;
+  onUpdate: (id: string, name: string, type: SubjectType, teacher?: string | null) => void;
 }) {
   const [name, setName] = useState(subject.name);
   const [type, setType] = useState<SubjectType>(subject.type);
+  const [teacher, setTeacher] = useState<string>(subject.teacher || '');
 
   // Reset state when dialog opens
   useEffect(() => {
     if (open) {
       setName(subject.name);
       setType(subject.type);
+      setTeacher(subject.teacher || '');
     }
   }, [open, subject]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (name) {
-      onUpdate(subject.id, name, type);
+      onUpdate(subject.id, name, type, teacher || null);
       onOpenChange(false);
     }
   };
@@ -2117,6 +2132,21 @@ function EditSubjectDialog({
                 <SelectItem value="SL">Standard Level (SL)</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="edit-subject-teacher">Teacher</Label>
+            <Select value={teacher || 'general'} onValueChange={(v) => setTeacher(v === 'general' ? '' : v)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="general">General Algorithm</SelectItem>
+                <SelectItem value="Greenwood">Greenwood (PMSS; Physics)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Set a teacher for subject-specific grade prediction
+            </p>
           </div>
           <DialogFooter>
             <Button type="submit">Save Changes</Button>

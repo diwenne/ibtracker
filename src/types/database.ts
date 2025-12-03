@@ -7,6 +7,7 @@ export type Subject = {
   ai_predicted_grade: number | null
   ai_explanation: string | null
   prediction_dirty: boolean
+  teacher: string | null
   created_at: string
   updated_at: string
 }
