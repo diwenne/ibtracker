@@ -740,6 +740,15 @@ function SubjectGradeCard({
         {(() => {
           const teacherConfig = getTeacherConfig(subject.teacher || null);
           if (teacherConfig) {
+            if (teacherConfig.id === 'Greenwood') {
+              return (
+                <div className="bg-muted/50 border border-border rounded-lg p-3 text-sm">
+                  <p className="text-muted-foreground">
+                    <strong>{teacherConfig.displayName}:</strong> {teacherConfig.note}
+                  </p>
+                </div>
+              );
+            }
             return (
               <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-sm">
                 <p className="text-blue-900 dark:text-blue-100">
@@ -754,12 +763,12 @@ function SubjectGradeCard({
         <div className="space-y-4 py-2 sm:py-4">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <h3 className="font-medium">Assessments</h3>
-            <div className="flex gap-2 w-full sm:w-auto">
+            <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full sm:w-auto">
               <Select
                 value={subject.teacher || 'general'}
                 onValueChange={handleTeacherChange}
               >
-                <SelectTrigger className="h-8 text-xs w-auto min-w-[140px]">
+                <SelectTrigger className="h-8 w-auto min-w-[120px] sm:min-w-[140px] font-medium">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
