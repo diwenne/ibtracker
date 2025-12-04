@@ -113,11 +113,11 @@ function calculateGreenwoodGrade(subject: Subject, assessments: Assessment[]): G
         adjustedPercent = Math.min(rawPercentage * 1.5, 49); // Scale up a bit but cap at 49%
     }
 
-    // Build explanation
+    // Build explanation (without revealing exact weights)
     const explanation = [
         `Tests: ${testsTotalScore}/${testsTotalMax} = ${testsRawPercent.toFixed(1)}%`,
         `Labs: ${labsTotalScore}/${labsTotalMax} = ${labsRawPercent.toFixed(1)}%`,
-        `Weighted: (${testsRawPercent.toFixed(1)}% × 0.8) + (${labsRawPercent.toFixed(1)}% × 0.18) = ${rawPercentage.toFixed(1)}%`,
+        `Weighted Average: ${rawPercentage.toFixed(1)}%`,
         `Grade ${ibGrade} (Adjusted: ${adjustedPercent.toFixed(3)}%)`
     ].join(' • ');
 

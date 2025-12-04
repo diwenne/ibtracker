@@ -212,7 +212,7 @@ export function ManageCategoriesDialog({
                                     <>
                                         <div className="col-span-6 text-sm">{cat.name}</div>
                                         <div className="col-span-4 text-sm font-medium">
-                                            {(cat.rawWeight * 100).toFixed(1)}%
+                                            {isReadOnly ? '—' : `${(cat.rawWeight * 100).toFixed(1)}%`}
                                         </div>
                                         {!isReadOnly && (
                                             <div className="col-span-2 flex gap-1">
