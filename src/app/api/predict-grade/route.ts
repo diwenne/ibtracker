@@ -141,8 +141,17 @@ STEP 1: CALCULATE WEIGHTED AVERAGE PERCENTAGE (EXACT FORMULA):
 1. For each category in categoryData:
    - category has: id, name, weight (0.0 to 1.0)
    - Find ALL assessments where assessment.category_id === category.id
-   - Calculate average of rawPercent for those assessments only
-   - category_contribution = category.weight × average_rawPercent
+   - If NO assessments in this category:
+     * Assume average_rawPercent = 100% (benefit of the doubt)
+     * category_contribution = category.weight × 100
+   - If assessments exist:
+     * Calculate average of rawPercent for those assessments only
+     * category_contribution = category.weight × average_rawPercent
+
+   CRITICAL: If the sum of all used weights (categories + uncategorized) is NOT 1.0, you MUST normalize the final result.
+   Example: If weights sum to 1.0 (e.g. 0.55 + 0.45), just sum the contributions.
+   Example: If weights sum to > 1.0 (e.g. 55 + 45 = 100), divide the total sum by the total weight.
+   Formula: final_weighted_avg = (sum of contributions) / (sum of all weights)
 
 2. For uncategorized assessments (where category_id === null):
    - Count how many assessments have category_id === null
@@ -153,7 +162,7 @@ STEP 1: CALCULATE WEIGHTED AVERAGE PERCENTAGE (EXACT FORMULA):
      * uncategorized_contribution = 0
      * DO NOT use these assessments at all
 
-3. weighted_avg_pct = sum of all category_contributions + uncategorized_contribution
+3. weighted_avg_pct = (sum of all category_contributions + uncategorized_contribution) / (sum of all weights)
 
 EXAMPLE WITH YOUR DATA:
 - Category Silent Drills (id=X, weight=1.0), assessments with category_id=X: [100%]
