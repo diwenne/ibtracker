@@ -66,6 +66,7 @@ export function calculateLocalPrediction(
     let totalWeightedScore = 0
     let totalWeightedPercent = 0
     let totalUsedWeight = 0
+    let totalRealWeight = 0 // Weight from categories that actually have assessments
 
     console.log('[PREDICTION DEBUG] Subject:', subject.name, 'Type:', subject.type)
     console.log('[PREDICTION DEBUG] Categories:', categories.map(c => ({ name: c.name, weight: c.rawWeight })))
@@ -138,14 +139,16 @@ export function calculateLocalPrediction(
             totalWeightedScore += catAvg * catWeight
             totalWeightedPercent += catPercentAvg * catWeight
             totalUsedWeight += catWeight
+            totalRealWeight += catWeight
         }
     }
 
     // 3. Handle uncategorized assessments
     // Uncategorized assessments get the remaining weight (1.0 - sum of category weights)
+    const totalCategoryWeight = categories.reduce((sum, cat) => sum + cat.rawWeight, 0)
+    const uncategorizedWeight = Math.max(0, 1.0 - totalCategoryWeight)
+
     if (uncategorized.length > 0) {
-        const totalCategoryWeight = categories.reduce((sum, cat) => sum + cat.rawWeight, 0)
-        const uncategorizedWeight = Math.max(0, 1.0 - totalCategoryWeight)
         console.log('[PREDICTION DEBUG] Uncategorized weight:', uncategorizedWeight, '(1.0 -', totalCategoryWeight, ')')
 
         if (uncategorizedWeight > 0) {
@@ -204,9 +207,72 @@ export function calculateLocalPrediction(
         }
     }
 
-    console.log('[PREDICTION DEBUG] Total weighted score:', totalWeightedScore, '| Total used weight:', totalUsedWeight)
+    console.log('[PREDICTION DEBUG] Total weighted score:', totalWeightedScore, '| Total used weight:', totalUsedWeight, '| Total real weight:', totalRealWeight)
 
     if (totalUsedWeight === 0) return null
+
+    // Fallback: If we have NO real weight (all categories empty) but we DO have uncategorized assessments
+    // that were ignored because uncategorizedWeight was 0, we should use the uncategorized average.
+    if (totalRealWeight === 0 && uncategorized.length > 0 && uncategorizedWeight === 0) {
+        console.log('[PREDICTION DEBUG] No real category data, falling back to uncategorized average')
+        let uncatTotalScore = 0
+        let uncatTotalPercent = 0
+        let validCount = 0
+
+        for (const a of uncategorized) {
+            let score: number | null = null
+            let percent: number | null = null
+
+            if (isHL) {
+                if (a.ibGrade !== null && a.ibGrade !== undefined) {
+                    score = a.ibGrade
+                } else if (a.rawPercent !== null && a.rawPercent !== undefined) {
+                    score = estimateIbGradeFromPercent(a.rawPercent)
+                }
+            } else {
+                if (a.rawPercent !== null && a.rawPercent !== undefined) {
+                    score = a.rawPercent
+                } else if (a.ibGrade !== null && a.ibGrade !== undefined) {
+                    score = estimatePercentFromIbGrade(a.ibGrade)
+                }
+            }
+
+            if (a.rawPercent !== null && a.rawPercent !== undefined) {
+                percent = a.rawPercent
+            } else if (a.ibGrade !== null && a.ibGrade !== undefined) {
+                percent = estimatePercentFromIbGrade(a.ibGrade)
+            }
+
+            if (score !== null) {
+                uncatTotalScore += score
+                if (percent !== null) uncatTotalPercent += percent
+                validCount++
+            }
+        }
+
+        if (validCount > 0) {
+            const avgScore = uncatTotalScore / validCount
+            const avgPercent = uncatTotalPercent / validCount
+
+            if (isHL) {
+                return {
+                    grade: Math.round(avgScore),
+                    percentage: avgPercent,
+                    method: 'simple-average',
+                    details: `Average of ${validCount} uncategorized assessments (categories empty)`
+                }
+            } else {
+                const roundedScore = Math.round(avgScore) // For SL, score IS percent
+                const grade = convertPercentToIbGrade(roundedScore)
+                return {
+                    grade,
+                    percentage: avgScore,
+                    method: 'simple-average',
+                    details: `Average of ${avgScore.toFixed(1)}% (categories empty)`
+                }
+            }
+        }
+    }
 
     // Since we're using direct percentage weights (0.0-1.0), the final score IS the weighted sum
     // We only divide by totalUsedWeight if it's less than 1.0 (to handle case where some categories are empty)
