@@ -212,7 +212,7 @@ export default function Home() {
     }
   };
 
-  const updateSubject = async (id: string, name: string, type: SubjectType, teacher?: string | null) => {
+  const updateSubject = async (id: string, name: string, type: SubjectType, teacher?: string | null, overrideGrade?: number | null) => {
     // If switching to a teacher with specific categories, handle category reset
     const teacherConfig = getTeacherConfig(teacher || null);
     if (teacherConfig) {
@@ -237,7 +237,7 @@ export default function Home() {
       }
     }
 
-    const updated = await api.updateSubject(id, name, type, teacher, supabase);
+    const updated = await api.updateSubject(id, name, type, teacher, overrideGrade, supabase);
     if (updated) {
       // Reload all subjects to get updated categories and assessments
       await loadSubjects();
@@ -271,6 +271,11 @@ export default function Home() {
   // Calculate total predicted grade (out of 42)
 
   const totalPredicted = subjects.reduce((total, subject) => {
+    // Check for manual override first
+    if (subject.overrideGrade !== undefined && subject.overrideGrade !== null) {
+      return total + subject.overrideGrade;
+    }
+
     if (subject.assessments.length === 0) return total; // Skip subjects with no assessments
 
     // Check for teacher-specific calculation first
@@ -543,7 +548,7 @@ function SubjectGradeCard({
   onAddAssessment: (sid: string, assessment: Omit<Assessment, 'id'>) => void;
   onUpdateAssessment: (sid: string, aid: string, assessment: Omit<Assessment, 'id'>) => void;
   onDeleteAssessment: (sid: string, aid: string) => void;
-  onUpdateSubject: (id: string, name: string, type: SubjectType, teacher?: string | null) => void;
+  onUpdateSubject: (id: string, name: string, type: SubjectType, teacher?: string | null, overrideGrade?: number | null) => void;
   onManageCategories: (subject: Subject) => void;
   onRefresh: () => void;
 }) {
@@ -572,7 +577,7 @@ function SubjectGradeCard({
     }
     // Otherwise, just update directly
     else {
-      onUpdateSubject(subject.id, subject.name, subject.type, newTeacher);
+      onUpdateSubject(subject.id, subject.name, subject.type, newTeacher, subject.overrideGrade);
     }
   };
 
@@ -580,7 +585,7 @@ function SubjectGradeCard({
     if (pendingTeacher !== undefined && !isConfirmingTeacher) {
       setIsConfirmingTeacher(true);
       try {
-        await onUpdateSubject(subject.id, subject.name, subject.type, pendingTeacher);
+        await onUpdateSubject(subject.id, subject.name, subject.type, pendingTeacher, subject.overrideGrade);
         setShowTeacherConfirm(false);
         setPendingTeacher(null);
       } finally {
@@ -656,9 +661,15 @@ function SubjectGradeCard({
   let displayPercentage: number;
   let isTeacher = false;
   let isAi = false;
+  let isOverride = false;
   let predictionDetails: string | undefined;
 
-  if (teacherCalculation) {
+  if (subject.overrideGrade !== undefined && subject.overrideGrade !== null) {
+    displayGrade = subject.overrideGrade;
+    displayPercentage = percentage; // Keep the calculated percentage for reference
+    predictionDetails = "Manual Override";
+    isOverride = true;
+  } else if (teacherCalculation) {
     // Use teacher-specific calculation
     displayGrade = teacherCalculation.grade;
     displayPercentage = teacherCalculation.percentage;
@@ -701,7 +712,8 @@ function SubjectGradeCard({
               <p className="text-xs text-muted-foreground/60">
                 {subject.type}{subject.assessments.length === 0 ? ' • No data' : displayPercentage > 0 ? ` • ${displayPercentage.toFixed(0)}%` : ''}
                 {isTeacher && subject.teacher && ` • ${subject.teacher.toUpperCase()}`}
-                {isAi && !isTeacher && ' • AI'}
+                {isAi && !isTeacher && !isOverride && ' • AI'}
+                {isOverride && ' • Manual'}
               </p>
             </div>
             {isPredicting && <span className="text-[10px] text-muted-foreground animate-pulse">Updating...</span>}
@@ -743,7 +755,8 @@ function SubjectGradeCard({
                   <div className="flex items-center gap-2">
                     <span>Predicted Grade: <strong>{displayGrade}</strong> {displayPercentage > 0 && `(${displayPercentage.toFixed(1)}%)`}</span>
                     {isTeacher && subject.teacher && <span className="text-[10px] bg-blue-500 text-white px-1.5 py-0.5 rounded">{subject.teacher.toUpperCase()}</span>}
-                    {isAi && !isTeacher && <span className="text-[10px] bg-secondary px-1.5 py-0.5 rounded">AI</span>}
+                    {isAi && !isTeacher && !isOverride && <span className="text-[10px] bg-secondary px-1.5 py-0.5 rounded">AI</span>}
+                    {isOverride && <span className="text-[10px] bg-purple-500 text-white px-1.5 py-0.5 rounded">Manual</span>}
                   </div>
                   {predictionDetails && (
                     <span className="text-xs text-muted-foreground">{predictionDetails}</span>
@@ -2288,11 +2301,12 @@ function EditSubjectDialog({
   subject: Subject;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onUpdate: (id: string, name: string, type: SubjectType, teacher?: string | null) => void;
+  onUpdate: (id: string, name: string, type: SubjectType, teacher?: string | null, overrideGrade?: number | null) => void;
 }) {
   const [name, setName] = useState(subject.name);
   const [type, setType] = useState<SubjectType>(subject.type);
   const [teacher, setTeacher] = useState<string>(subject.teacher || '');
+  const [overrideGrade, setOverrideGrade] = useState<string>(subject.overrideGrade?.toString() || '');
 
   // Reset state when dialog opens
   useEffect(() => {
@@ -2300,13 +2314,15 @@ function EditSubjectDialog({
       setName(subject.name);
       setType(subject.type);
       setTeacher(subject.teacher || '');
+      setOverrideGrade(subject.overrideGrade?.toString() || '');
     }
   }, [open, subject]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (name) {
-      onUpdate(subject.id, name, type, teacher || null);
+      const grade = overrideGrade ? parseInt(overrideGrade) : null;
+      onUpdate(subject.id, name, type, teacher || null, grade);
       onOpenChange(false);
     }
   };
@@ -2357,6 +2373,21 @@ function EditSubjectDialog({
             </Select>
             <p className="text-xs text-muted-foreground">
               Set a teacher for subject-specific grade prediction
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="edit-subject-override">Manual Grade Override</Label>
+            <Input
+              id="edit-subject-override"
+              type="number"
+              min="1"
+              max="7"
+              value={overrideGrade}
+              onChange={e => setOverrideGrade(e.target.value)}
+              placeholder="Leave empty to use calculated grade"
+            />
+            <p className="text-xs text-muted-foreground">
+              Force a specific grade (1-7) regardless of assessments
             </p>
           </div>
           <DialogFooter>
