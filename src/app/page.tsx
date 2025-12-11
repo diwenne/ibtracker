@@ -269,14 +269,32 @@ export default function Home() {
   };
 
   // Calculate total predicted grade (out of 42)
+
   const totalPredicted = subjects.reduce((total, subject) => {
     if (subject.assessments.length === 0) return total; // Skip subjects with no assessments
 
+    // Check for teacher-specific calculation first
+    const teacherConfig = getTeacherConfig(subject.teacher || null);
+    const teacherCalculation = teacherConfig?.calculateGrade
+      ? teacherConfig.calculateGrade(subject, subject.assessments)
+      : null;
+
+    if (teacherCalculation) {
+      return total + teacherCalculation.grade;
+    }
+
     // Use AI predicted grade if available, otherwise fall back to local calculation
     const localPrediction = calculateLocalPrediction(subject, subject.assessments, subject.categories || []);
-    const grade = subject.aiPredictedGrade || localPrediction?.grade || calculatePredictedGrade(subject.assessments);
+    const basicGrade = calculatePredictedGrade(subject.assessments);
 
-    return total + grade;
+    // Match logic in SubjectGradeCard
+    if (subject.type === 'SL') {
+      // For SL subjects, ALWAYS use local calculation
+      return total + (localPrediction?.grade || basicGrade);
+    } else {
+      // For HL subjects, use AI if available
+      return total + (subject.aiPredictedGrade || localPrediction?.grade || basicGrade);
+    }
   }, 0);
 
   // Determine color for total predicted grade

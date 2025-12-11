@@ -67,8 +67,9 @@ function calculateGreenwoodGrade(subject: Subject, assessments: Assessment[]): G
     }
 
     // Calculate raw percentages
-    const testsRawPercent = testsTotalMax > 0 ? (testsTotalScore / testsTotalMax) * 100 : 0;
-    const labsRawPercent = labsTotalMax > 0 ? (labsTotalScore / labsTotalMax) * 100 : 0;
+    // If no assessments in a category, assume 100% to avoid penalizing students
+    const testsRawPercent = testsTotalMax > 0 ? (testsTotalScore / testsTotalMax) * 100 : 100;
+    const labsRawPercent = labsTotalMax > 0 ? (labsTotalScore / labsTotalMax) * 100 : 100;
 
     // Calculate weighted raw percentage (0.8 + 0.18 = 0.98, 2% discarded)
     const rawPercentage = (testsRawPercent * 0.8) + (labsRawPercent * 0.18);
