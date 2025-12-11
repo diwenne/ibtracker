@@ -2,6 +2,7 @@ import { Assessment, Category, Subject } from '@/lib/types'
 
 export type PredictionResult = {
     grade: number
+    percentage?: number
     method: 'weighted-ib' | 'weighted-percent' | 'simple-average'
     details: string
 }
@@ -63,6 +64,7 @@ export function calculateLocalPrediction(
 
     const categoryWeights = normalizeWeights(categories)
     let totalWeightedScore = 0
+    let totalWeightedPercent = 0
     let totalUsedWeight = 0
 
     console.log('[PREDICTION DEBUG] Subject:', subject.name, 'Type:', subject.type)
@@ -72,17 +74,30 @@ export function calculateLocalPrediction(
     // 2. Calculate weighted score for categorized assessments
     for (const cat of categories) {
         const catAssessments = assessmentsByCategory[cat.id] || []
-        console.log(`[PREDICTION DEBUG] Category "${cat.name}" (weight: ${cat.rawWeight}):`, catAssessments.length, 'assessments')
-        if (catAssessments.length === 0) continue
-
         const catWeight = categoryWeights[cat.id]
+
+        console.log(`[PREDICTION DEBUG] Category "${cat.name}" (weight: ${cat.rawWeight}):`, catAssessments.length, 'assessments')
+
+        if (catAssessments.length === 0) {
+            // Assume 100% for empty categories to avoid penalty
+            const perfectScore = isHL ? 7 : 100
+            console.log(`[PREDICTION DEBUG] Category "${cat.name}" empty - assuming 100% (${perfectScore})`)
+            totalWeightedScore += perfectScore * catWeight
+            totalWeightedPercent += 100 * catWeight
+            totalUsedWeight += catWeight
+            continue
+        }
+
+
 
         // Calculate average score for this category
         let catTotalScore = 0
+        let catTotalPercent = 0
         let validCount = 0
 
         for (const a of catAssessments) {
             let score: number | null = null
+            let percent: number | null = null
 
             if (isHL) {
                 // HL: Use IB Grade directly
@@ -102,16 +117,26 @@ export function calculateLocalPrediction(
                 }
             }
 
+            // Calculate percent for display/SL logic
+            if (a.rawPercent !== null && a.rawPercent !== undefined) {
+                percent = a.rawPercent
+            } else if (a.ibGrade !== null && a.ibGrade !== undefined) {
+                percent = estimatePercentFromIbGrade(a.ibGrade)
+            }
+
             if (score !== null) {
                 catTotalScore += score
+                if (percent !== null) catTotalPercent += percent
                 validCount++
             }
         }
 
         if (validCount > 0) {
             const catAvg = catTotalScore / validCount
+            const catPercentAvg = catTotalPercent / validCount
             console.log(`[PREDICTION DEBUG] Category "${cat.name}" avg:`, catAvg, '| Adding:', catAvg * catWeight)
             totalWeightedScore += catAvg * catWeight
+            totalWeightedPercent += catPercentAvg * catWeight
             totalUsedWeight += catWeight
         }
     }
@@ -125,10 +150,12 @@ export function calculateLocalPrediction(
 
         if (uncategorizedWeight > 0) {
             let uncatTotalScore = 0
+            let uncatTotalPercent = 0
             let validCount = 0
 
             for (const a of uncategorized) {
                 let score: number | null = null
+                let percent: number | null = null
 
                 if (isHL) {
                     if (a.ibGrade !== null && a.ibGrade !== undefined) {
@@ -144,16 +171,32 @@ export function calculateLocalPrediction(
                     }
                 }
 
+                if (a.rawPercent !== null && a.rawPercent !== undefined) {
+                    percent = a.rawPercent
+                } else if (a.ibGrade !== null && a.ibGrade !== undefined) {
+                    percent = estimatePercentFromIbGrade(a.ibGrade)
+                }
+
                 if (score !== null) {
                     uncatTotalScore += score
+                    if (percent !== null) uncatTotalPercent += percent
                     validCount++
                 }
             }
 
             if (validCount > 0) {
                 const uncatAvg = uncatTotalScore / validCount
+                const uncatPercentAvg = uncatTotalPercent / validCount
                 console.log('[PREDICTION DEBUG] Uncategorized avg:', uncatAvg, '| Adding:', uncatAvg * uncategorizedWeight)
                 totalWeightedScore += uncatAvg * uncategorizedWeight
+                totalWeightedPercent += uncatPercentAvg * uncategorizedWeight
+                totalUsedWeight += uncategorizedWeight
+            } else {
+                // Assume 100% for empty uncategorized section if it has weight
+                const perfectScore = isHL ? 7 : 100
+                console.log(`[PREDICTION DEBUG] Uncategorized empty - assuming 100% (${perfectScore})`)
+                totalWeightedScore += perfectScore * uncategorizedWeight
+                totalWeightedPercent += 100 * uncategorizedWeight
                 totalUsedWeight += uncategorizedWeight
             }
         } else {
@@ -175,6 +218,7 @@ export function calculateLocalPrediction(
         // HL result is already in 1-7 scale
         return {
             grade: Math.round(finalScore),
+            percentage: totalWeightedPercent,
             method: 'weighted-ib',
             details: `Weighted average of IB grades (HL logic)`
         }
@@ -184,6 +228,7 @@ export function calculateLocalPrediction(
         const grade = convertPercentToIbGrade(roundedScore)
         return {
             grade,
+            percentage: finalScore,
             method: 'weighted-percent',
             details: `Weighted average of ${finalScore.toFixed(1)}% (SL logic)`
         }

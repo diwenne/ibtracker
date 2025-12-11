@@ -488,9 +488,17 @@ export default function Home() {
             {subjects.map((subject) => {
               // Use local prediction for weighted percentage (respects category weights)
               const localPred = calculateLocalPrediction(subject, subject.assessments, subject.categories || []);
-              const rawPercentage = localPred && subject.type === 'SL'
-                ? parseFloat(localPred.details.match(/(\d+\.?\d*)%/)?.[1] || '0')
-                : calculatePercentage(subject.assessments, subject.type);
+
+              let rawPercentage = 0;
+              if (localPred?.percentage !== undefined) {
+                rawPercentage = localPred.percentage;
+              } else if (localPred && subject.type === 'SL') {
+                // Fallback for old cached predictions?
+                rawPercentage = parseFloat(localPred.details.match(/(\d+\.?\d*)%/)?.[1] || '0');
+              } else {
+                rawPercentage = calculatePercentage(subject.assessments, subject.type);
+              }
+
               // Round to integer for SL subjects
               const percentage = subject.type === 'SL' ? Math.round(rawPercentage) : rawPercentage;
               const grade = calculatePredictedGrade(subject.assessments);
