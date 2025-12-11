@@ -211,14 +211,26 @@ export function calculateLocalPrediction(
     // Since we're using direct percentage weights (0.0-1.0), the final score IS the weighted sum
     // We only divide by totalUsedWeight if it's less than 1.0 (to handle case where some categories are empty)
     // But if totalUsedWeight < 1.0, we should NOT scale up - just use the weighted score directly
-    const finalScore = totalWeightedScore
-    console.log('[PREDICTION DEBUG] Final score:', finalScore)
+    let finalScore = totalWeightedScore
+    let finalPercent = totalWeightedPercent
+
+    // Normalize if weights don't add up to 1 (e.g. if user uses 55 instead of 0.55, or if they just don't sum to 1)
+    if (totalUsedWeight > 0 && Math.abs(totalUsedWeight - 1.0) > 0.01) {
+        // If weights are like 55 and 45 (sum > 1), we MUST normalize
+        if (totalUsedWeight > 1.0) {
+            console.log('[PREDICTION DEBUG] Weights sum > 1, normalizing by', totalUsedWeight)
+            finalScore = totalWeightedScore / totalUsedWeight
+            finalPercent = totalWeightedPercent / totalUsedWeight
+        }
+    }
+
+    console.log('[PREDICTION DEBUG] Final score:', finalScore, 'Final Percent:', finalPercent)
 
     if (isHL) {
         // HL result is already in 1-7 scale
         return {
             grade: Math.round(finalScore),
-            percentage: totalWeightedPercent,
+            percentage: finalPercent,
             method: 'weighted-ib',
             details: `Weighted average of IB grades (HL logic)`
         }
@@ -228,7 +240,7 @@ export function calculateLocalPrediction(
         const grade = convertPercentToIbGrade(roundedScore)
         return {
             grade,
-            percentage: finalScore,
+            percentage: finalScore, // Use finalScore for SL as it matches the grade calculation
             method: 'weighted-percent',
             details: `Weighted average of ${finalScore.toFixed(1)}% (SL logic)`
         }
