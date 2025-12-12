@@ -316,12 +316,13 @@ export function calculateLocalPrediction(
 // Helpers
 
 function estimateIbGradeFromPercent(percent: number): number {
-    if (percent >= 80) return 7
-    if (percent >= 70) return 6
-    if (percent >= 60) return 5
-    if (percent >= 50) return 4
-    if (percent >= 40) return 3
-    if (percent >= 30) return 2
+    // HL Boundaries from PLAN.md: 7 (98+), 6 (96+), 5 (90+), 4 (86+), 3 (76+), 2 (50+), 1 (<50)
+    if (percent >= 98) return 7
+    if (percent >= 96) return 6
+    if (percent >= 90) return 5
+    if (percent >= 86) return 4
+    if (percent >= 76) return 3
+    if (percent >= 50) return 2
     return 1
 }
 
