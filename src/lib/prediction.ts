@@ -114,7 +114,7 @@ export function calculateLocalPrediction(
                     score = a.rawPercent
                 } else if (a.ibGrade !== null && a.ibGrade !== undefined) {
                     // Fallback: Estimate percent from IB grade
-                    score = estimatePercentFromIbGrade(a.ibGrade)
+                    score = estimatePercentFromIbGrade(a.ibGrade, isHL)
                 }
             }
 
@@ -122,7 +122,7 @@ export function calculateLocalPrediction(
             if (a.rawPercent !== null && a.rawPercent !== undefined) {
                 percent = a.rawPercent
             } else if (a.ibGrade !== null && a.ibGrade !== undefined) {
-                percent = estimatePercentFromIbGrade(a.ibGrade)
+                percent = estimatePercentFromIbGrade(a.ibGrade, isHL)
             }
 
             if (score !== null) {
@@ -170,14 +170,14 @@ export function calculateLocalPrediction(
                     if (a.rawPercent !== null && a.rawPercent !== undefined) {
                         score = a.rawPercent
                     } else if (a.ibGrade !== null && a.ibGrade !== undefined) {
-                        score = estimatePercentFromIbGrade(a.ibGrade)
+                        score = estimatePercentFromIbGrade(a.ibGrade, isHL)
                     }
                 }
 
                 if (a.rawPercent !== null && a.rawPercent !== undefined) {
                     percent = a.rawPercent
                 } else if (a.ibGrade !== null && a.ibGrade !== undefined) {
-                    percent = estimatePercentFromIbGrade(a.ibGrade)
+                    percent = estimatePercentFromIbGrade(a.ibGrade, isHL)
                 }
 
                 if (score !== null) {
@@ -233,14 +233,14 @@ export function calculateLocalPrediction(
                 if (a.rawPercent !== null && a.rawPercent !== undefined) {
                     score = a.rawPercent
                 } else if (a.ibGrade !== null && a.ibGrade !== undefined) {
-                    score = estimatePercentFromIbGrade(a.ibGrade)
+                    score = estimatePercentFromIbGrade(a.ibGrade, isHL)
                 }
             }
 
             if (a.rawPercent !== null && a.rawPercent !== undefined) {
                 percent = a.rawPercent
             } else if (a.ibGrade !== null && a.ibGrade !== undefined) {
-                percent = estimatePercentFromIbGrade(a.ibGrade)
+                percent = estimatePercentFromIbGrade(a.ibGrade, isHL)
             }
 
             if (score !== null) {
@@ -325,21 +325,36 @@ function estimateIbGradeFromPercent(percent: number): number {
     return 1
 }
 
-function estimatePercentFromIbGrade(grade: number): number {
-    switch (grade) {
-        case 7: return 85
-        case 6: return 75
-        case 5: return 65
-        case 4: return 55
-        case 3: return 45
-        case 2: return 35
-        case 1: return 20
-        default: return 50
+function estimatePercentFromIbGrade(grade: number, isHL: boolean = false): number {
+    if (isHL) {
+        // HL Boundaries from PLAN.md: 7 (98+), 6 (96+), 5 (90+), 4 (86+), 3 (76+), 2 (50+), 1 (<50)
+        switch (grade) {
+            case 7: return 99 // Midpoint of 98-100
+            case 6: return 97 // Midpoint of 96-97
+            case 5: return 93 // Midpoint of 90-95
+            case 4: return 88 // Midpoint of 86-89
+            case 3: return 81 // Midpoint of 76-85
+            case 2: return 63 // Midpoint of 50-75
+            case 1: return 25 // Midpoint of 0-49
+            default: return 50
+        }
+    } else {
+        // SL Boundaries from PLAN.md: 7 (96-100), 6 (90-95), 5 (86-89), 4 (76-85), 3 (70-75), 2 (50-69), 1 (0-49)
+        switch (grade) {
+            case 7: return 98 // Midpoint of 96-100
+            case 6: return 93 // Midpoint of 90-95
+            case 5: return 88 // Midpoint of 86-89
+            case 4: return 81 // Midpoint of 76-85
+            case 3: return 73 // Midpoint of 70-75
+            case 2: return 60 // Midpoint of 50-69
+            case 1: return 25 // Midpoint of 0-49
+            default: return 50
+        }
     }
 }
 
 function convertPercentToIbGrade(percent: number): number {
-    // SL boundaries from plan.md
+    // SL boundaries from PLAN.md
     if (percent >= 96) return 7  // 96-100
     if (percent >= 90) return 6  // 90-95
     if (percent >= 86) return 5  // 86-89
