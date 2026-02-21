@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Plus, Trash2, ChevronRight, TrendingUp, Home as HomeIcon, Pencil, Info, Mail, RefreshCw, MessageSquare, Menu } from "lucide-react";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { Plus, Trash2, ChevronRight, TrendingUp, Home as HomeIcon, Pencil, Info, Mail, RefreshCw, MessageSquare, Menu, ArrowUpDown, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -561,6 +561,40 @@ function SubjectGradeCard({
   const [pendingTeacher, setPendingTeacher] = useState<string | null>(null);
   const [isConfirmingTeacher, setIsConfirmingTeacher] = useState(false);
 
+  // Sorting & filtering state
+  const [sortBy, setSortBy] = useState<'date' | 'grade' | 'name'>('date');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [showSortFilter, setShowSortFilter] = useState(false);
+
+  const sortedFilteredAssessments = useMemo(() => {
+    let list = [...subject.assessments];
+
+    // Filter by category
+    if (filterCategory !== 'all') {
+      if (filterCategory === 'uncategorized') {
+        list = list.filter(a => !a.categoryId);
+      } else {
+        list = list.filter(a => a.categoryId === filterCategory);
+      }
+    }
+
+    // Sort
+    list.sort((a, b) => {
+      let cmp = 0;
+      if (sortBy === 'date') {
+        cmp = a.date.localeCompare(b.date);
+      } else if (sortBy === 'grade') {
+        cmp = (a.ibGrade ?? 0) - (b.ibGrade ?? 0);
+      } else if (sortBy === 'name') {
+        cmp = a.name.localeCompare(b.name);
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+
+    return list;
+  }, [subject.assessments, sortBy, sortDir, filterCategory]);
+
   const handleTeacherChange = (value: string) => {
     const newTeacher = value === 'general' ? null : value;
     const currentTeacherConfig = getTeacherConfig(subject.teacher || null);
@@ -823,11 +857,82 @@ function SubjectGradeCard({
             </div>
           </div>
 
+          {/* Sort & Filter Toggle */}
+          {subject.assessments.length > 0 && (
+            <div>
+              <button
+                type="button"
+                className="text-xs text-primary hover:text-primary/80 underline underline-offset-2 cursor-pointer bg-transparent border-none p-0"
+                onClick={() => setShowSortFilter(v => !v)}
+              >
+                {showSortFilter ? 'Hide sort & filter' : 'Sort & filter'}
+              </button>
+              {showSortFilter && (
+                <div className="flex flex-wrap items-center gap-2 text-xs mt-2">
+                  {/* Sort By */}
+                  <div className="flex items-center gap-1">
+                    <ArrowUpDown className="h-3 w-3 text-muted-foreground" />
+                    <Select value={sortBy} onValueChange={(v) => setSortBy(v as 'date' | 'grade' | 'name')}>
+                      <SelectTrigger className="h-7 w-auto min-w-[80px] text-xs px-2 py-0">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="date">Date</SelectItem>
+                        <SelectItem value="grade">Grade</SelectItem>
+                        <SelectItem value="name">Name</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                      onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+                      title={sortDir === 'asc' ? 'Ascending' : 'Descending'}
+                    >
+                      <span className="text-[10px] font-mono">{sortDir === 'asc' ? '↑' : '↓'}</span>
+                    </Button>
+                  </div>
+
+                  {/* Filter by Category */}
+                  <div className="flex items-center gap-1">
+                    <SlidersHorizontal className="h-3 w-3 text-muted-foreground" />
+                    <Select value={filterCategory} onValueChange={setFilterCategory}>
+                      <SelectTrigger className="h-7 w-auto min-w-[90px] text-xs px-2 py-0">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Categories</SelectItem>
+                        <SelectItem value="uncategorized">Uncategorized</SelectItem>
+                        {subject.categories?.map(cat => (
+                          <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Reset button */}
+                  {(sortBy !== 'date' || sortDir !== 'desc' || filterCategory !== 'all') && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs text-muted-foreground hover:text-foreground px-2"
+                      onClick={() => { setSortBy('date'); setSortDir('desc'); setFilterCategory('all'); }}
+                    >
+                      Reset
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {subject.assessments.length === 0 ? (
             <p className="text-center text-muted-foreground py-8 text-sm">No assessments yet</p>
+          ) : sortedFilteredAssessments.length === 0 ? (
+            <p className="text-center text-muted-foreground py-8 text-sm">No assessments match the selected filter</p>
           ) : (
             <div className="space-y-2">
-              {subject.assessments.map((assessment) => {
+              {sortedFilteredAssessments.map((assessment) => {
                 // Calculate display values
                 let displayPercent = 0;
                 const displayGrade = assessment.ibGrade;
