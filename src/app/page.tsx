@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Plus, Trash2, ChevronRight, TrendingUp, Home as HomeIcon, Pencil, Info, Mail, RefreshCw, MessageSquare, Menu, ArrowUpDown, SlidersHorizontal, Eye, EyeOff } from "lucide-react";
+import { Plus, Trash2, ChevronRight, TrendingUp, Home as HomeIcon, Pencil, Info, Mail, RefreshCw, MessageSquare, Menu, ArrowUpDown, SlidersHorizontal, Eye, EyeOff, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -69,12 +69,20 @@ function formatDateForDisplay(isoDate: string): string {
 }
 
 // Footer component used across all pages
-function Footer() {
+function Footer({ onShowChangelog }: { onShowChangelog?: () => void }) {
   return (
     <footer className="bg-background py-4 mt-auto">
       <div className="container mx-auto px-6">
         <div className="flex items-center justify-center gap-3 text-xs text-muted-foreground">
           <span>© {new Date().getFullYear()} Diwen Huang</span>
+          {onShowChangelog && (
+            <>
+              <span>·</span>
+              <button onClick={onShowChangelog} className="hover:text-foreground transition-colors">
+                Changelog
+              </button>
+            </>
+          )}
         </div>
       </div>
     </footer>
@@ -92,6 +100,7 @@ export default function Home() {
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [hideMainScore, setHideMainScore] = useState(false);
   const [hiddenSubjects, setHiddenSubjects] = useState<Set<string>>(new Set());
+  const [showChangelog, setShowChangelog] = useState(false);
 
   const supabase = createClient();
 
@@ -446,6 +455,12 @@ export default function Home() {
                 >
                   Sign Out
                 </button>
+                <button
+                  onClick={() => setShowChangelog(true)}
+                  className="text-left text-2xl font-medium py-3 px-4 rounded-md outline-none text-muted-foreground"
+                >
+                  Changelog
+                </button>
               </div>
             </SheetContent>
           </Sheet>
@@ -548,7 +563,66 @@ export default function Home() {
         </section>
       </main>
 
-      <Footer />
+      <Footer onShowChangelog={() => setShowChangelog(true)} />
+
+      {/* Changelog Dialog */}
+      <Dialog open={showChangelog} onOpenChange={setShowChangelog}>
+        <DialogContent className="sm:max-w-md max-h-[70vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="h-4 w-4" />
+              Changelog
+            </DialogTitle>
+            <DialogDescription>Notable updates and features</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {[
+              { date: 'Feb 21, 2026', changes: [
+                'Score hide/show toggle for privacy',
+                'Allow 0-weight categories (excluded from grade)',
+                'Sort & filter assessments by date, grade, or name',
+              ]},
+              { date: 'Feb 20, 2026', changes: [
+                'Improved prediction logic and authentication flow',
+              ]},
+              { date: 'Dec 11, 2025', changes: [
+                'Updated HL grade boundary estimation',
+                'Fixed weight normalization for categories',
+              ]},
+              { date: 'Dec 10, 2025', changes: [
+                'Manual grade override feature',
+                'Updated Next.js to fix security vulnerability',
+              ]},
+              { date: 'Dec 3, 2025', changes: [
+                'Teacher-specific grading support',
+                'UI restyling',
+              ]},
+              { date: 'Nov 30, 2025', changes: [
+                'Feedback page',
+                'Mobile responsiveness improvements',
+                'Forgot password flow',
+              ]},
+              { date: 'Nov 29, 2025', changes: [
+                'Initial launch with AI-powered grade predictions',
+                'Assessment tracking with categories & weights',
+                'Trends view for grade history',
+              ]},
+            ].map((entry) => (
+              <div key={entry.date}>
+                <p className="text-xs font-medium text-muted-foreground mb-1">{entry.date}</p>
+                <ul className="space-y-0.5">
+                  {entry.changes.map((change, i) => (
+                    <li key={i} className="text-sm flex items-center gap-2">
+                      <span className="text-muted-foreground/60">•</span>
+                      <span>{change}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {selectedSubjectForCategories && (
         <ManageCategoriesDialog
