@@ -288,18 +288,11 @@ export default function Home() {
       return total + teacherCalculation.grade;
     }
 
-    // Use AI predicted grade if available, otherwise fall back to local calculation
+    // Use exact mathematical local prediction
     const localPrediction = calculateLocalPrediction(subject, subject.assessments, subject.categories || []);
     const basicGrade = calculatePredictedGrade(subject.assessments);
 
-    // Match logic in SubjectGradeCard
-    if (subject.type === 'SL') {
-      // For SL subjects, ALWAYS use local calculation
-      return total + (localPrediction?.grade || basicGrade);
-    } else {
-      // For HL subjects, use AI if available
-      return total + (subject.aiPredictedGrade || localPrediction?.grade || basicGrade);
-    }
+    return total + (localPrediction?.grade || basicGrade);
   }, 0);
 
   // Determine color for total predicted grade
@@ -660,21 +653,20 @@ function SubjectGradeCard({
     ? teacherConfig.calculateGrade(subject, subject.assessments)
     : null;
 
-  // Calculate local prediction as fallback
+  // Calculate local exact mathematical prediction
   const localPrediction = calculateLocalPrediction(subject, subject.assessments, subject.categories || []);
 
   // Determine which prediction to show
-  // Priority: Teacher calculation > AI (for HL) > Local calculation
+  // Priority: Teacher calculation > Local exact calculation
   let displayGrade: number;
   let displayPercentage: number;
   let isTeacher = false;
-  let isAi = false;
   let isOverride = false;
   let predictionDetails: string | undefined;
 
   if (subject.overrideGrade !== undefined && subject.overrideGrade !== null) {
     displayGrade = subject.overrideGrade;
-    displayPercentage = percentage; // Keep the calculated percentage for reference
+    displayPercentage = localPrediction?.percentage ?? percentage;
     predictionDetails = "Manual Override";
     isOverride = true;
   } else if (teacherCalculation) {
@@ -683,17 +675,11 @@ function SubjectGradeCard({
     displayPercentage = teacherCalculation.percentage;
     predictionDetails = teacherCalculation.explanation;
     isTeacher = true;
-  } else if (subject.type === 'SL') {
-    // For SL subjects, ALWAYS use local calculation (AI is too unreliable with weights)
-    displayGrade = localPrediction?.grade || grade;
-    displayPercentage = percentage;
-    predictionDetails = localPrediction?.details;
   } else {
-    // For HL subjects, use AI if available (trends/adjustments are useful)
-    displayGrade = subject.aiPredictedGrade || localPrediction?.grade || grade;
-    displayPercentage = percentage;
-    isAi = !!subject.aiPredictedGrade;
-    predictionDetails = subject.aiExplanation || localPrediction?.details;
+    // For both SL and HL subjects, use exact local mathematical grade calculation
+    displayGrade = localPrediction?.grade || grade;
+    displayPercentage = localPrediction?.percentage ?? percentage;
+    predictionDetails = localPrediction?.details;
   }
 
   // Determine color based on grade quality
@@ -720,7 +706,6 @@ function SubjectGradeCard({
               <p className="text-xs text-muted-foreground/60">
                 {subject.type}{subject.assessments.length === 0 ? ' • No data' : displayPercentage > 0 ? ` • ${displayPercentage.toFixed(0)}%` : ''}
                 {isTeacher && subject.teacher && ` • ${subject.teacher.toUpperCase()}`}
-                {isAi && !isTeacher && !isOverride && ' • AI'}
                 {isOverride && ' • Manual'}
               </p>
             </div>
@@ -763,11 +748,17 @@ function SubjectGradeCard({
                   <div className="flex items-center gap-2">
                     <span>Predicted Grade: <strong>{displayGrade}</strong> {displayPercentage > 0 && `(${displayPercentage.toFixed(1)}%)`}</span>
                     {isTeacher && subject.teacher && <span className="text-[10px] bg-blue-500 text-white px-1.5 py-0.5 rounded">{subject.teacher.toUpperCase()}</span>}
-                    {isAi && !isTeacher && !isOverride && <span className="text-[10px] bg-secondary px-1.5 py-0.5 rounded">AI</span>}
                     {isOverride && <span className="text-[10px] bg-purple-500 text-white px-1.5 py-0.5 rounded">Manual</span>}
                   </div>
                   {predictionDetails && (
-                    <span className="text-xs text-muted-foreground">{predictionDetails}</span>
+                    <div className="text-xs text-muted-foreground mt-2 space-y-1 bg-muted/30 p-2 rounded-md border border-border/50">
+                      {predictionDetails.split(' • ').map((detail, i) => (
+                        <div key={i} className="flex gap-2">
+                          <span className="text-muted-foreground/50">•</span>
+                          <span>{detail}</span>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
               )}

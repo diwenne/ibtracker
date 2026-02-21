@@ -29,10 +29,8 @@ export default function Auth({ onLogin }: { onLogin: () => void }) {
 
         try {
             if (isForgotPassword) {
-                // Use localhost for development, production URL for deployed version
-                const redirectUrl = window.location.hostname === 'localhost'
-                    ? 'http://localhost:3000/reset-password'
-                    : `${window.location.origin}/reset-password`;
+                // Redirect to auth callback to exchange code for session
+                const redirectUrl = `${window.location.origin}/auth/callback?type=recovery`;
 
                 const { error } = await supabase.auth.resetPasswordForEmail(email, {
                     redirectTo: redirectUrl,

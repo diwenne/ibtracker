@@ -52,15 +52,33 @@ export async function POST(request: Request) {
             apiKey: apiKey,
         });
 
-        const assessmentData = assessments.map((a: any) => ({
-            name: a.name,
-            ibGrade: a.ibGrade,
-            rawPercent: a.rawPercent,
-            date: a.date,
-            notes: a.notes,
-            category_id: a.categoryId || null,
-            category_name: categories?.find((c: any) => c.id === a.categoryId)?.name || "Uncategorized"
-        }));
+        const assessmentData = assessments.map((a: any) => {
+            let pointsAttained = null;
+            let pointsAvailable = null;
+
+            // Extract points from rawGrade like "34/40"
+            if (a.rawGrade) {
+                const match = a.rawGrade.match(/([\d.]+)\s*\/\s*([\d.]+)/);
+                if (match && match.length === 3) {
+                    pointsAttained = parseFloat(match[1]);
+                    pointsAvailable = parseFloat(match[2]);
+                }
+            } else if (a.rawPercent) {
+                // Fallback: If no raw grade but pure percent exists, use percent out of 100
+                pointsAttained = a.rawPercent;
+                pointsAvailable = 100;
+            }
+
+            return {
+                name: a.name,
+                pointsAttained,
+                pointsAvailable,
+                date: a.date,
+                notes: a.notes,
+                category_id: a.categoryId || null,
+                category_name: categories?.find((c: any) => c.id === a.categoryId)?.name || "Uncategorized"
+            };
+        });
 
         const categoryData = categories?.map((c: any) => ({
             id: c.id,
@@ -83,49 +101,37 @@ Assessment data: ${JSON.stringify(assessmentData)}
 Category weightings: ${JSON.stringify(categoryData)}
 ${hasUncategorized ? `\nCRITICAL: Uncategorized assessments have an implicit weight of ${(uncategorizedWeight * 100).toFixed(1)}% (remaining weight after categories).${uncategorizedWeight === 0 ? ' THIS MEANS UNCATEGORIZED ASSESSMENTS ARE WORTH 0% AND MUST BE COMPLETELY IGNORED IN YOUR CALCULATION.' : ''}` : ''}
 
-HL-SPECIFIC RULES (STRICT CONSERVATIVE APPROACH):
-1. CALCULATE WEIGHTED AVERAGE FIRST:
-   - Use ibGrade and rawPercent fields for context
-   - Category weights are DIRECT PERCENTAGES (e.g., 0.2 = 20%, 0.5 = 50%)
-   - Uncategorized assessments (if any) use the remaining weight
-   - Compute weighted_avg = Σ(ibGrade × category_weight)
-   - This weighted average is your BASELINE - do NOT deviate more than ±1 grade from it
-   - Round DOWN if between grades (e.g., 5.7 → 5, NOT 6)
+THIS IS PURE MATHEMATICS - NO INTERPRETATION, NO TRENDS, NO ADJUSTMENTS:
 
-2. BE EXTREMELY CONSERVATIVE:
-   - NEVER predict a grade the student has NEVER achieved
-   - If best grade ever is 6, the maximum prediction is 6 (NOT 7)
-   - If student got 5-6 range, predict on the LOWER end (lean towards 5, not 6)
-   - Only predict the highest achieved grade if it appears in MULTIPLE recent high-weight assessments
+1. CALCULATE WEIGHTED AVERAGE (USING TOTAL POINTS):
+   - For EACH category: Sum the total \`pointsAttained\` and divide by the sum of \`pointsAvailable\` for all assessments in that category.
+   - Example: Assessment 1 (30/40), Assessment 2 (15/20). Category Total: (30+15)/(40+20) = 45/60 = 75%.
+   - Empty Categories: If a category has NO assessments, DO NOT use it. Do NOT factor its weight into the total.
+   - Multiply the total Category Percentage by the Category Weight.
 
-3. TREND ADJUSTMENTS (VERY LIMITED):
-   - Improvement trend (4→5→6): Predict 5 or 6, NOT 7 (they never got 7)
-   - Consistent performance (all 5s): Predict 5, do NOT bump to 6
-   - Mixed performance (4s, 5s, 6s): Weighted average, round DOWN
-   - Only adjust UP by 1 if student has 3+ recent high-weight assessments at that higher grade
+2. NORMALIZE FINAL PERCENTAGE:
+   - Sum the active category weights. If it doesn't add to 1.0 (because of empty categories), normalize it: (Sum of category contributions) / (Sum of active weights).
+   - If an assessment has NO pointsAttained/pointsAvailable, ignore it. Do NOT read notes.
 
-4. WEIGHTING:
-   - Recent high-weight assessments (Exams, IAs) matter most
-   - But still constrained by the weighted average ±1 rule
+3. CONVERT TO IB GRADE (STRICT BOUNDARIES):
+   96-100% = 7
+   90-95% = 6
+   86-89% = 5
+   76-85% = 4
+   70-75% = 3
+   50-69% = 2
+   0-49% = 1
+   NO OTHER RULES. JUST USE THE PURE FORMULA.
 
-5. NOTES ARE CRITICAL - READ CAREFULLY:
-   - NOTES field contains important context that MUST significantly affect weight
-   - If notes say "worth VERY little" or "doesn't count" → reduce that assessment's weight by 50-90%
-   - If notes say "bad day", "sick", "unfair" → reduce weight by 30-50%
-   - If notes say "extra important", "final", "cumulative" → increase weight by 20-30%
-   - If notes say "practice only" or "mock" → reduce weight by 40-60%
-   - Empty notes = use normal weight
-   - NEVER ignore notes - they directly modify how much an assessment should count
-
-6. STRICT BOUNDARIES:
-   - Weighted avg 6.3 with max grade 6 → predict 6 (NOT 7)
-   - Weighted avg 5.7 with grades 5-6 → predict 5 (round down)
-   - Weighted avg 4.9 with improvement → predict 5 ONLY if multiple recent 5s exist
+4. EXPLANATION FORMATTING:
+   - You MUST format your explanation to explicitly show the exact math and weights used for each category.
+   - Example Output: "Tests (weight 80%): 45/60 = 75.0% • Labs (weight 20%): 20/20 = 100.0% • Weighted Percentage: 87.5% • Grade 5"
+   - Do NOT write paragraph sentences. Use the ' • ' separator to show the exact breakdown of Category (weight X%): SumAttained/SumAvailable = %.
 
 Output strictly in this JSON format:
 {
   "predictedGrade": number,
-  "explanation": "string (max 2 sentences citing weighted average and constraints)"
+  "explanation": "Tests (weight 80%): 45/60 = 75.0% • Labs: ..."
 }`
             : `Predict the final IB grade (1-7) for the SL (Standard Level) subject "${subject.name}".
 
@@ -135,65 +141,35 @@ ${hasUncategorized ? `\nCRITICAL: Uncategorized assessments have an implicit wei
 
 THIS IS PURE MATHEMATICS - NO INTERPRETATION, NO TRENDS, NO ADJUSTMENTS:
 
-IMPORTANT: Use rawPercent for calculations. ibGrade field is provided for reference only.
+1. CALCULATE WEIGHTED AVERAGE (USING TOTAL POINTS):
+   - For EACH category: Sum the total \`pointsAttained\` and divide by the sum of \`pointsAvailable\` for all assessments in that category.
+   - Example: Assessment 1 (30/40), Assessment 2 (15/20). Category Total: (30+15)/(40+20) = 45/60 = 75%.
+   - Empty Categories: If a category has NO assessments, DO NOT use it. Do NOT factor its weight into the total.
+   - Multiply the total Category Percentage by the Category Weight.
 
-STEP 1: CALCULATE WEIGHTED AVERAGE PERCENTAGE (EXACT FORMULA):
-1. For each category in categoryData:
-   - category has: id, name, weight (0.0 to 1.0)
-   - Find ALL assessments where assessment.category_id === category.id
-   - If NO assessments in this category:
-     * Assume average_rawPercent = 100% (benefit of the doubt)
-     * category_contribution = category.weight × 100
-   - If assessments exist:
-     * Calculate average of rawPercent for those assessments only
-     * category_contribution = category.weight × average_rawPercent
+2. NORMALIZE FINAL PERCENTAGE:
+   - Sum the active category weights. If it doesn't add to 1.0 (because of empty categories), normalize it: (Sum of category contributions) / (Sum of active weights).
+   - If an assessment has NO pointsAttained/pointsAvailable, ignore it. Do NOT read notes.
 
-   CRITICAL: If the sum of all used weights (categories + uncategorized) is NOT 1.0, you MUST normalize the final result.
-   Example: If weights sum to 1.0 (e.g. 0.55 + 0.45), just sum the contributions.
-   Example: If weights sum to > 1.0 (e.g. 55 + 45 = 100), divide the total sum by the total weight.
-   Formula: final_weighted_avg = (sum of contributions) / (sum of all weights)
+3. CONVERT TO IB GRADE (STRICT BOUNDARIES):
+   96-100% = 7
+   90-95% = 6
+   86-89% = 5
+   76-85% = 4
+   70-75% = 3
+   50-69% = 2
+   0-49% = 1
+   NO OTHER RULES. JUST USE THE PURE FORMULA.
 
-2. For uncategorized assessments (where category_id === null):
-   - Count how many assessments have category_id === null
-   - If uncategorized_weight > 0:
-     * Calculate average rawPercent of assessments with category_id === null
-     * uncategorized_contribution = uncategorized_weight × average_rawPercent
-   - If uncategorized_weight === 0:
-     * uncategorized_contribution = 0
-     * DO NOT use these assessments at all
-
-3. weighted_avg_pct = (sum of all category_contributions + uncategorized_contribution) / (sum of all weights)
-
-EXAMPLE WITH YOUR DATA:
-- Category Silent Drills (id=X, weight=1.0), assessments with category_id=X: [100%]
-  → contribution = 1.0 × 100 = 100
-- Uncategorized (category_id=null): weight=0.0
-  → contribution = 0
-- Result: 100%
-
-STEP 2: CONVERT TO IB GRADE (STRICT BOUNDARIES):
-96-100% = 7
-90-95% = 6
-86-89% = 5
-76-85% = 4
-70-75% = 3
-50-69% = 2
-0-49% = 1
-
-THAT'S IT. NO OTHER RULES. NO TRENDS. NO ADJUSTMENTS. JUST USE THE FORMULA.
-
-Example:
-- Category "Tests" weight=1.0, assessments=[100%]
-  → contribution = 1.0 × 100 = 100
-- Uncategorized weight=0.0
-  → contribution = 0
-- weighted_avg_pct = 100
-- Grade = 7
+4. EXPLANATION FORMATTING:
+   - You MUST format your explanation to explicitly show the exact math and weights used for each category.
+   - Example Output: "Tests (weight 80%): 45/60 = 75.0% • Labs (weight 20%): 20/20 = 100.0% • Weighted Percentage: 87.5% • Grade 5"
+   - Do NOT write paragraph sentences. Use the ' • ' separator to show the exact breakdown of Category (weight X%): SumAttained/SumAvailable = %.
 
 Output strictly in this JSON format:
 {
   "predictedGrade": number,
-  "explanation": "Weighted average: X.X%. Grade boundary: Y."
+  "explanation": "Tests: 45/60 = 75.0% • Labs: ..."
 }`;
 
         console.log('[AI PREDICT] Subject:', subject.name, 'Type:', subject.type);
@@ -206,9 +182,7 @@ Output strictly in this JSON format:
             messages: [
                 {
                     role: "system",
-                    content: isHL
-                        ? "You are an expert IB Coordinator and teacher. Your task is to predict students' final IB grades (1-7) based on their assessment data. Always respond with valid JSON only, no markdown formatting."
-                        : "You are a mathematical calculator. For SL subjects, calculate the exact weighted average percentage and convert to IB grade. This is pure mathematics - no interpretation, no trends, no adjustments. Always respond with valid JSON only, no markdown formatting."
+                    content: "You are a mathematical calculator. Calculate the exact weighted average percentage and convert to an IB grade based strictly on the bounds provided. This is pure mathematics - no interpretation, no trends, no adjustments. Always respond with valid JSON only, no markdown formatting."
                 },
                 {
                     role: "user",

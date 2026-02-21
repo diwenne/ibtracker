@@ -26,7 +26,7 @@ export function AuthForm() {
     try {
       if (isForgotPassword) {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}/auth/reset-password`,
+          redirectTo: `${window.location.origin}/auth/callback?type=recovery`,
         })
         if (error) throw error
         setMessage('Check your email for the password reset link!')
