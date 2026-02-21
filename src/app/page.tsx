@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Plus, Trash2, ChevronRight, TrendingUp, Home as HomeIcon, Pencil, Info, Mail, RefreshCw, MessageSquare, Menu, ArrowUpDown, SlidersHorizontal } from "lucide-react";
+import { Plus, Trash2, ChevronRight, TrendingUp, Home as HomeIcon, Pencil, Info, Mail, RefreshCw, MessageSquare, Menu, ArrowUpDown, SlidersHorizontal, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -90,6 +90,8 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const initialLoadComplete = useRef(false);
   const [isRecalculating, setIsRecalculating] = useState(false);
+  const [hideMainScore, setHideMainScore] = useState(false);
+  const [hiddenSubjects, setHiddenSubjects] = useState<Set<string>>(new Set());
 
   const supabase = createClient();
 
@@ -468,10 +470,26 @@ export default function Home() {
             </Button>
           </div>
           <div className="flex items-baseline gap-3">
-            <span className={`text-[10rem] font-bold leading-none bg-gradient-to-br ${getTotalColor(totalPredicted)} bg-clip-text text-transparent`}>
-              {totalPredicted}
+            <span className={`text-[10rem] font-bold leading-none ${hideMainScore ? 'text-muted-foreground/40' : `bg-gradient-to-br ${getTotalColor(totalPredicted)} bg-clip-text text-transparent`}`}>
+              {hideMainScore ? '●●' : totalPredicted}
             </span>
-            <span className="text-5xl text-muted-foreground font-medium">/42</span>
+            <span className={`text-5xl font-medium ${hideMainScore ? 'text-muted-foreground/30' : 'text-muted-foreground'}`}>{hideMainScore ? '/●●' : '/42'}</span>
+            <button
+              type="button"
+              className="self-center flex items-center justify-center h-7 w-7 rounded-full border border-border/60 text-muted-foreground hover:text-foreground hover:border-border transition-colors bg-background/50"
+              onClick={() => {
+                const willHide = !hideMainScore;
+                setHideMainScore(willHide);
+                if (willHide) {
+                  setHiddenSubjects(new Set(subjects.map(s => s.id)));
+                } else {
+                  setHiddenSubjects(new Set());
+                }
+              }}
+              title={hideMainScore ? 'Show all scores' : 'Hide all scores'}
+            >
+              {hideMainScore ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+            </button>
           </div>
         </section>
 
@@ -502,6 +520,18 @@ export default function Home() {
                   subject={subject}
                   grade={grade}
                   percentage={percentage}
+                  hideScores={hiddenSubjects.has(subject.id)}
+                  onToggleHide={() => {
+                    setHiddenSubjects(prev => {
+                      const next = new Set(prev);
+                      if (next.has(subject.id)) {
+                        next.delete(subject.id);
+                      } else {
+                        next.add(subject.id);
+                      }
+                      return next;
+                    });
+                  }}
                   onAddAssessment={addAssessment}
                   onUpdateAssessment={updateAssessment}
                   onDeleteAssessment={deleteAssessment}
@@ -536,6 +566,8 @@ function SubjectGradeCard({
   subject,
   grade,
   percentage,
+  hideScores,
+  onToggleHide,
   onAddAssessment,
   onUpdateAssessment,
   onDeleteAssessment,
@@ -546,6 +578,8 @@ function SubjectGradeCard({
   subject: Subject;
   grade: number;
   percentage: number;
+  hideScores: boolean;
+  onToggleHide: () => void;
   onAddAssessment: (sid: string, assessment: Omit<Assessment, 'id'>) => void;
   onUpdateAssessment: (sid: string, aid: string, assessment: Omit<Assessment, 'id'>) => void;
   onDeleteAssessment: (sid: string, aid: string) => void;
@@ -732,13 +766,23 @@ function SubjectGradeCard({
         <div className="group cursor-pointer transition-all hover:opacity-80">
           {/* Just the number and subject name - transparent, minimal */}
           <div className="flex flex-col items-center space-y-1.5">
-            <span className={`text-4xl font-semibold ${subject.assessments.length === 0 ? 'text-muted-foreground/60' : getGradeColor(displayGrade)}`}>
-              {subject.assessments.length === 0 ? 'N/A' : displayGrade}
-            </span>
+            <div className="relative inline-flex items-center justify-center">
+              <span className={`text-4xl font-semibold ${subject.assessments.length === 0 ? 'text-muted-foreground/60' : hideScores ? 'text-muted-foreground/40' : getGradeColor(displayGrade)}`}>
+                {subject.assessments.length === 0 ? 'N/A' : hideScores ? '●' : displayGrade}
+              </span>
+              <button
+                type="button"
+                className="absolute -right-6 flex items-center justify-center h-4 w-4 rounded-full text-muted-foreground/40 hover:text-muted-foreground transition-colors opacity-0 group-hover:opacity-100"
+                onClick={(e) => { e.stopPropagation(); onToggleHide(); }}
+                title={hideScores ? 'Show score' : 'Hide score'}
+              >
+                {hideScores ? <Eye className="h-2.5 w-2.5" /> : <EyeOff className="h-2.5 w-2.5" />}
+              </button>
+            </div>
             <div className="text-center">
               <p className="text-sm font-medium text-foreground/80">{subject.name}</p>
               <p className="text-xs text-muted-foreground/60">
-                {subject.type}{subject.assessments.length === 0 ? ' • No data' : displayPercentage > 0 ? ` • ${displayPercentage.toFixed(0)}%` : ''}
+                {subject.type}{subject.assessments.length === 0 ? ' • No data' : hideScores ? ' • ●●%' : displayPercentage > 0 ? ` • ${displayPercentage.toFixed(0)}%` : ''}
                 {isTeacher && subject.teacher && ` • ${subject.teacher.toUpperCase()}`}
                 {isOverride && ' • Manual'}
               </p>
