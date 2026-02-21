@@ -52,8 +52,8 @@ export function ManageCategoriesDialog({
     const handleAdd = async () => {
         if (!newCategoryName.trim()) return;
         const weight = parseFloat(newCategoryWeight);
-        if (isNaN(weight) || weight <= 0 || weight > 1) {
-            alert('Weight must be greater than 0 and at most 1 (0 < weight ≤ 1)');
+        if (isNaN(weight) || weight < 0 || weight > 1) {
+            alert('Weight must be between 0 and 1 (0 ≤ weight ≤ 1)');
             return;
         }
 
@@ -104,8 +104,8 @@ export function ManageCategoriesDialog({
     const saveEdit = async (id: string) => {
         if (!editName.trim()) return;
         const weight = parseFloat(editWeight);
-        if (isNaN(weight) || weight <= 0 || weight > 1) {
-            alert('Weight must be greater than 0 and at most 1 (0 < weight ≤ 1)');
+        if (isNaN(weight) || weight < 0 || weight > 1) {
+            alert('Weight must be between 0 and 1 (0 ≤ weight ≤ 1)');
             return;
         }
 
@@ -193,7 +193,7 @@ export function ManageCategoriesDialog({
                                                 value={editWeight}
                                                 onChange={(e) => setEditWeight(e.target.value)}
                                                 className="h-8"
-                                                min="0.001"
+                                                min="0"
                                                 max="1"
                                                 step="0.01"
                                                 placeholder="0.1 = 10%"
@@ -254,7 +254,7 @@ export function ManageCategoriesDialog({
                                             placeholder="0.1 = 10%"
                                             value={newCategoryWeight}
                                             onChange={(e) => setNewCategoryWeight(e.target.value)}
-                                            min="0.001"
+                                            min="0"
                                             max="1"
                                             step="0.01"
                                         />
@@ -266,7 +266,7 @@ export function ManageCategoriesDialog({
                             </div>
                             <p className="text-xs text-muted-foreground mt-2">
                                 <AlertCircle className="h-3 w-3 inline mr-1" />
-                                Enter weights as decimals (0.1 = 10%, 0.25 = 25%, etc.). Total cannot exceed 1.0 (100%). Uncategorized assessments get the remaining weight.
+                                Enter weights as decimals (0 = not counted, 0.1 = 10%, 0.25 = 25%, etc.). Total cannot exceed 1.0 (100%). Uncategorized assessments get the remaining weight.
                             </p>
                         </div>
                     )}

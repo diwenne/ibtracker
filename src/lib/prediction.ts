@@ -100,6 +100,7 @@ export function calculateLocalPrediction(
         const catWeight = categoryWeights[cat.id]
 
         if (catAssessments.length === 0) continue
+        if (catWeight === 0) continue // 0-weight categories are not counted
 
         let catPointsAttained = 0
         let catPointsAvailable = 0
