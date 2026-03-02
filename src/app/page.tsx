@@ -101,6 +101,31 @@ export default function Home() {
   const [hideMainScore, setHideMainScore] = useState(false);
   const [hiddenSubjects, setHiddenSubjects] = useState<Set<string>>(new Set());
   const [showChangelog, setShowChangelog] = useState(false);
+  const [hasLoadedSavedState, setHasLoadedSavedState] = useState(false);
+
+  useEffect(() => {
+    try {
+      const savedHideMain = localStorage.getItem('ib_tracker_hideMainScore');
+      if (savedHideMain !== null) setHideMainScore(JSON.parse(savedHideMain));
+      
+      const savedHiddenSubjects = localStorage.getItem('ib_tracker_hiddenSubjects');
+      if (savedHiddenSubjects !== null) setHiddenSubjects(new Set(JSON.parse(savedHiddenSubjects)));
+    } catch (e) {
+      console.error('Failed to load hidden state from local storage', e);
+    }
+    setHasLoadedSavedState(true);
+  }, []);
+
+  useEffect(() => {
+    if (hasLoadedSavedState) {
+      try {
+        localStorage.setItem('ib_tracker_hideMainScore', JSON.stringify(hideMainScore));
+        localStorage.setItem('ib_tracker_hiddenSubjects', JSON.stringify(Array.from(hiddenSubjects)));
+      } catch (e) {
+        console.error('Failed to save hidden state to local storage', e);
+      }
+    }
+  }, [hideMainScore, hiddenSubjects, hasLoadedSavedState]);
 
   const supabase = createClient();
 
