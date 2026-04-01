@@ -101,6 +101,7 @@ export default function Home() {
   const initialLoadComplete = useRef(false);
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [hideMainScore, setHideMainScore] = useState(false);
+  const [hideTotalPercent, setHideTotalPercent] = useState(false);
   const [hiddenSubjects, setHiddenSubjects] = useState<Set<string>>(new Set());
   const [showChangelog, setShowChangelog] = useState(false);
   const [hasLoadedSavedState, setHasLoadedSavedState] = useState(false);
@@ -417,6 +418,33 @@ export default function Home() {
 
   if (!isClient) return null;
 
+  const totalWeightedPercentage = (() => {
+    const activeSubjects = subjects.filter(s => {
+      const isCore = s.type === 'CORE' || s.isCore;
+      if (isCore) return s.manualPercent !== null && s.manualPercent !== undefined;
+      return s.assessments.length > 0 || s.manualPercent !== null || s.overrideGrade !== null;
+    });
+
+    if (activeSubjects.length === 0) return 0;
+
+    const sum = activeSubjects.reduce((acc, s) => {
+      if (s.manualPercent !== null && s.manualPercent !== undefined) return acc + s.manualPercent;
+      
+      const midpoints: Record<number, number> = {
+        7: 98, 6: 92, 5: 87, 4: 80, 3: 72, 2: 60, 1: 30
+      };
+      
+      if (s.overrideGrade !== null && s.overrideGrade !== undefined) {
+        return acc + (midpoints[s.overrideGrade as number] || 0);
+      }
+
+      const localPred = calculateLocalPrediction(s, s.assessments, s.categories || []);
+      return acc + (localPred?.percentage ?? 0);
+    }, 0);
+
+    return sum / activeSubjects.length;
+  })();
+
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
   }
@@ -582,9 +610,24 @@ export default function Home() {
               onClick={() => {
                 setHideMainScore(!hideMainScore);
               }}
-              title={hideMainScore ? 'Show all scores' : 'Hide all scores'}
+              title={hideMainScore ? 'Show score' : 'Hide score'}
             >
               {hideMainScore ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+            </button>
+          </div>
+          
+          <div className="group relative mt-1">
+            <div className={`text-[11px] font-medium tracking-widest uppercase transition-all duration-300 ${hideTotalPercent ? 'text-muted-foreground/10' : 'text-muted-foreground/40'}`}>
+              <span className="mr-2">AVG PERCENT:</span>
+              <span className="font-bold font-mono">{hideTotalPercent ? '●●.●' : totalWeightedPercentage.toFixed(1)}%</span>
+            </div>
+            <button
+              type="button"
+              className="absolute -right-6 top-1/2 -translate-y-1/2 flex items-center justify-center h-4 w-4 rounded-full text-muted-foreground/20 hover:text-muted-foreground transition-all opacity-0 group-hover:opacity-100"
+              onClick={() => setHideTotalPercent(!hideTotalPercent)}
+              title={hideTotalPercent ? 'Show average' : 'Hide average'}
+            >
+              {hideTotalPercent ? <Eye className="h-2.5 w-2.5" /> : <EyeOff className="h-2.5 w-2.5" />}
             </button>
           </div>
         </section>
@@ -806,7 +849,7 @@ function SubjectGradeCard({
   onAddAssessment: (sid: string, assessment: Omit<Assessment, 'id'>) => void;
   onUpdateAssessment: (sid: string, aid: string, assessment: Omit<Assessment, 'id'>) => void;
   onDeleteAssessment: (sid: string, aid: string) => void;
-  onUpdateSubject: (id: string, name: string, type: SubjectType, teacher?: string | null, overrideGrade?: number | null) => void;
+  onUpdateSubject: (id: string, name: string, type: SubjectType, teacher?: string | null, overrideGrade?: number | null, manualPercent?: number | null) => void;
   onManageCategories: (subject: Subject) => void;
   onRefresh: () => void;
 }) {
@@ -1077,6 +1120,32 @@ function SubjectGradeCard({
             </div>
           </DialogDescription>
         </DialogHeader>
+ 
+        {/* Core Manual Percentage Input */}
+        {isCore && (
+          <div className="mx-6 my-2 p-3 bg-muted/20 border border-border/50 rounded-lg">
+            <div className="flex items-center justify-between gap-4">
+              <div className="space-y-0.5">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">Manual Grade Entry</p>
+                <p className="text-[10px] text-muted-foreground/40 italic">Type your percentage to update your grade</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  step="any"
+                  value={subject.manualPercent ?? ''}
+                  onChange={(e) => {
+                    const val = e.target.value === '' ? null : parseFloat(e.target.value);
+                    onUpdateSubject(subject.id, subject.name, subject.type, subject.teacher, subject.overrideGrade, val);
+                  }}
+                  placeholder="Enter %"
+                  className="h-8 w-24 text-right text-sm font-mono bg-background border-border/50"
+                />
+                <span className="text-xs font-medium text-muted-foreground">%</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Teacher Note */}
         {(() => {
@@ -1709,27 +1778,30 @@ function EditAssessmentDialog({
     }
   };
 
+  // Autosave logic
+  useEffect(() => {
+    if (!open) return;
+
+    const timer = setTimeout(() => {
+      if (name && (ibGrade || rawPercent || rawGrade || letterGrade)) {
+        onUpdate({
+          name,
+          ibGrade: ibGrade ? parseInt(ibGrade) : null,
+          letterGrade: letterGrade || null,
+          rawGrade: rawGrade || null,
+          rawPercent: rawPercent ? parseFloat(rawPercent) : null,
+          date,
+          notes: notes || null,
+          categoryId: categoryId === "uncategorized" ? null : categoryId
+        });
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [name, ibGrade, letterGrade, rawGrade, rawPercent, date, notes, categoryId, open, onUpdate]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-
-    // Validation
-    if (!name) return;
-
-    if (!ibGrade && !rawPercent && !rawGrade) {
-      alert("Please enter at least an IB Grade, Raw Score, or Percentage.");
-      return;
-    }
-
-    onUpdate({
-      name,
-      ibGrade: ibGrade ? parseInt(ibGrade) : null,
-      letterGrade: letterGrade || null,
-      rawGrade: rawGrade || null,
-      rawPercent: rawPercent ? parseFloat(rawPercent) : null,
-      date,
-      notes: notes || null,
-      categoryId: categoryId === "uncategorized" ? null : categoryId
-    });
     onOpenChange(false);
   };
 
@@ -1874,9 +1946,9 @@ function EditAssessmentDialog({
             />
           </div>
 
-          <DialogFooter>
-            <Button type="submit" className="h-9 text-sm">Save Changes</Button>
-          </DialogFooter>
+          <div className="pt-2 text-center">
+            <p className="text-[10px] text-muted-foreground/40 italic">Changes are saved automatically</p>
+          </div>
         </form>
       </DialogContent>
     </Dialog>
@@ -2538,46 +2610,50 @@ function CombinedTrendChart({
   const chartHeight = 400;
   const chartWidth = 900;
 
-  // Determine if we should show y-axis labels
   const onlySubjects = !showPredicted && visibleSubjects.size > 0;
   const onlyPredicted = showPredicted && visibleSubjects.size === 0;
   const showYAxis = onlySubjects || onlyPredicted;
 
   const padding = { top: 30, right: 30, bottom: 50, left: showYAxis ? 70 : 30 };
 
-  // Determine y-axis range
-  let yMin = Infinity;
-  let yMax = -Infinity;
+  // Dynamic Y-axis: find actual min/max from data
+  let dataMin = Infinity;
+  let dataMax = -Infinity;
 
   data.forEach(point => {
-    if (showPredicted) {
-      yMin = Math.min(yMin, point.predictedGrade);
-      yMax = Math.max(yMax, point.predictedGrade);
+    if (showPredicted && point.predictedGrade > 0) {
+      dataMin = Math.min(dataMin, point.predictedGrade);
+      dataMax = Math.max(dataMax, point.predictedGrade);
     }
     visibleSubjects.forEach(subjectName => {
       if (point.subjectGrades[subjectName] !== undefined) {
-        yMin = Math.min(yMin, point.subjectGrades[subjectName]);
-        yMax = Math.max(yMax, point.subjectGrades[subjectName]);
+        dataMin = Math.min(dataMin, point.subjectGrades[subjectName]);
+        dataMax = Math.max(dataMax, point.subjectGrades[subjectName]);
       }
     });
   });
 
-  // Set appropriate y-axis range based on what's visible
+  // Apply dynamic range with padding
+  let yMin: number, yMax: number;
   if (onlyPredicted) {
-    yMin = 0;
-    yMax = 42;
+    const range = dataMax - dataMin;
+    const pad = Math.max(range * 0.3, 2);
+    yMin = Math.max(0, Math.floor(dataMin - pad));
+    yMax = Math.min(45, Math.ceil(dataMax + pad));
   } else if (onlySubjects) {
-    yMin = 1;
-    yMax = 7;
+    const range = dataMax - dataMin;
+    const pad = Math.max(range * 0.4, 0.5);
+    yMin = Math.max(1, Math.floor(dataMin - pad));
+    yMax = Math.min(7, Math.ceil(dataMax + pad));
   } else {
-    yMin = Math.floor(yMin) - 1;
-    yMax = Math.ceil(yMax) + 1;
+    const range = dataMax - dataMin;
+    const pad = Math.max(range * 0.3, 1);
+    yMin = Math.max(0, Math.floor(dataMin - pad));
+    yMax = Math.ceil(dataMax + pad);
   }
 
   const xScale = (index: number) => {
-    if (data.length === 1) {
-      return chartWidth / 2; // Center single point
-    }
+    if (data.length === 1) return chartWidth / 2;
     return padding.left + (index / (data.length - 1)) * (chartWidth - padding.left - padding.right);
   };
 
@@ -2585,7 +2661,45 @@ function CombinedTrendChart({
     return chartHeight - padding.bottom - ((value - yMin) / (yMax - yMin)) * (chartHeight - padding.top - padding.bottom);
   };
 
-  // Generate path for predicted grade (only for points where all 6 subjects have data)
+  const bottomY = chartHeight - padding.bottom;
+
+  // Catmull-Rom to cubic Bézier smooth path
+  function smoothPath(points: Array<{ x: number; y: number }>): string {
+    if (points.length < 2) return '';
+    if (points.length === 2) {
+      return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
+    }
+
+    const tension = 0.3;
+    let d = `M ${points[0].x} ${points[0].y}`;
+
+    for (let i = 0; i < points.length - 1; i++) {
+      const p0 = points[Math.max(0, i - 1)];
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const p3 = points[Math.min(points.length - 1, i + 2)];
+
+      const cp1x = p1.x + (p2.x - p0.x) * tension;
+      const cp1y = p1.y + (p2.y - p0.y) * tension;
+      const cp2x = p2.x - (p3.x - p1.x) * tension;
+      const cp2y = p2.y - (p3.y - p1.y) * tension;
+
+      d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
+    }
+
+    return d;
+  }
+
+  // Build a closed area path for gradient fill
+  function areaPath(points: Array<{ x: number; y: number }>): string {
+    if (points.length < 2) return '';
+    const linePath = smoothPath(points);
+    const lastPoint = points[points.length - 1];
+    const firstPoint = points[0];
+    return `${linePath} L ${lastPoint.x} ${bottomY} L ${firstPoint.x} ${bottomY} Z`;
+  }
+
+  // Predicted points
   const predictedPoints = showPredicted ? data.map((point, index) => ({
     x: xScale(index),
     y: yScale(point.predictedGrade),
@@ -2593,16 +2707,11 @@ function CombinedTrendChart({
     index,
   })).filter(p => p.value > 0) : [];
 
-  const predictedPath = predictedPoints.length > 0 ? predictedPoints.map((point, index) => {
-    return index === 0 ? `M ${point.x} ${point.y}` : `L ${point.x} ${point.y}`;
-  }).join(' ') : '';
-
-  // Generate paths for each subject
-  const subjectPaths: Array<{ name: string, points: Array<{ x: number, y: number, dataIndex: number }>, color: string }> = [];
+  // Subject paths
+  const subjectPaths: Array<{ name: string, points: Array<{ x: number, y: number, dataIndex: number }>, color: string, subjectIndex: number }> = [];
   subjects.forEach((subject, subjectIndex) => {
     if (!visibleSubjects.has(subject.name)) return;
 
-    // Get all data points where this subject has a grade
     const points: Array<{ x: number, y: number, dataIndex: number }> = [];
     data.forEach((point, dataIndex) => {
       if (point.subjectGrades[subject.name] !== undefined) {
@@ -2620,8 +2729,22 @@ function CombinedTrendChart({
       name: subject.name,
       points,
       color: getSubjectColor(subjectIndex),
+      subjectIndex,
     });
   });
+
+  // Y-axis labels
+  function generateYLabels(): number[] {
+    const labels: number[] = [];
+    if (onlyPredicted) {
+      const step = Math.max(1, Math.round((yMax - yMin) / 6));
+      for (let i = yMin; i <= yMax; i += step) labels.push(i);
+      if (labels[labels.length - 1] !== yMax) labels.push(yMax);
+    } else if (onlySubjects) {
+      for (let i = Math.ceil(yMin); i <= Math.floor(yMax); i++) labels.push(i);
+    }
+    return labels;
+  }
 
   return (
     <div className="w-full flex justify-center relative">
@@ -2629,7 +2752,6 @@ function CombinedTrendChart({
         const dataPoint = data[hoveredDataIndex];
         const hoveredItems: Array<{ label: string, value: number, color: string }> = [];
 
-        // Collect all values at this data point
         if (showPredicted && dataPoint.predictedGrade > 0) {
           hoveredItems.push({ label: 'Predicted Total', value: dataPoint.predictedGrade, color: '#6366f1' });
         }
@@ -2670,41 +2792,56 @@ function CombinedTrendChart({
         );
       })()}
       <svg width={chartWidth} height={chartHeight} className="max-w-full" viewBox={`0 0 ${chartWidth} ${chartHeight}`} preserveAspectRatio="xMidYMid meet">
+        <defs>
+          {/* Gradient fills for each subject */}
+          {subjectPaths.map((sp) => (
+            <linearGradient key={`grad-${sp.name}`} id={`grad-${sp.subjectIndex}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={sp.color} stopOpacity="0.3" />
+              <stop offset="100%" stopColor={sp.color} stopOpacity="0" />
+            </linearGradient>
+          ))}
+          {/* Predicted gradient */}
+          {showPredicted && (
+            <linearGradient id="grad-predicted" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#6366f1" stopOpacity="0.25" />
+              <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
+            </linearGradient>
+          )}
+        </defs>
+
+        {/* Horizontal grid lines */}
+        {showYAxis && generateYLabels().map((label) => (
+          <line
+            key={`grid-${label}`}
+            x1={padding.left}
+            y1={yScale(label)}
+            x2={chartWidth - padding.right}
+            y2={yScale(label)}
+            stroke="currentColor"
+            strokeOpacity="0.06"
+            strokeDasharray="4 4"
+          />
+        ))}
 
         {/* Y-axis labels */}
-        {showYAxis && (() => {
-          const labels: number[] = [];
-          if (onlyPredicted) {
-            // Show 0, 7, 14, 21, 28, 35, 42 for predicted total
-            for (let i = 0; i <= 42; i += 7) {
-              labels.push(i);
-            }
-          } else if (onlySubjects) {
-            // Show 1-7 for subjects
-            for (let i = 1; i <= 7; i++) {
-              labels.push(i);
-            }
-          }
-          return labels.map((label) => (
-            <text
-              key={label}
-              x={20}
-              y={yScale(label)}
-              textAnchor="start"
-              className="text-xs fill-muted-foreground"
-              dominantBaseline="middle"
-            >
-              {label}
-            </text>
-          ));
-        })()}
+        {showYAxis && generateYLabels().map((label) => (
+          <text
+            key={label}
+            x={20}
+            y={yScale(label)}
+            textAnchor="start"
+            className="text-xs fill-muted-foreground"
+            dominantBaseline="middle"
+          >
+            {label}
+          </text>
+        ))}
 
         {/* X-axis labels */}
         {(() => {
           const maxLabels = 8;
           const step = Math.max(1, Math.ceil(data.length / maxLabels));
           return data.map((point, index) => {
-            // Show first, last, and evenly spaced labels
             if (index !== 0 && index !== data.length - 1 && index % step !== 0) {
               return null;
             }
@@ -2722,41 +2859,44 @@ function CombinedTrendChart({
           });
         })()}
 
-        {/* Subject lines */}
+        {/* Subject area fills + smooth lines */}
         {subjectPaths.map((subjectPath) => {
-          // Generate path from points
-          const pathData = subjectPath.points.map((point, index) => {
-            return index === 0 ? `M ${point.x} ${point.y}` : `L ${point.x} ${point.y}`;
-          }).join(' ');
+          const lineD = smoothPath(subjectPath.points);
+          const fillD = areaPath(subjectPath.points);
 
           return (
             <g key={subjectPath.name}>
-              {/* Only draw line if there are 2+ points */}
+              {/* Gradient fill area */}
               {subjectPath.points.length > 1 && (
                 <path
-                  d={pathData}
+                  d={fillD}
+                  fill={`url(#grad-${subjectPath.subjectIndex})`}
+                />
+              )}
+              {/* Smooth line */}
+              {subjectPath.points.length > 1 && (
+                <path
+                  d={lineD}
                   fill="none"
                   stroke={subjectPath.color}
-                  strokeWidth="3"
+                  strokeWidth="2.5"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />
               )}
               {/* Points */}
-              {subjectPath.points.map((point, index) => {
-                return (
-                  <circle
-                    key={index}
-                    cx={point.x}
-                    cy={point.y}
-                    r="3"
-                    fill={subjectPath.color}
-                    style={{ cursor: 'pointer' }}
-                    onMouseEnter={() => setHoveredDataIndex(point.dataIndex)}
-                    onMouseLeave={() => setHoveredDataIndex(null)}
-                  />
-                );
-              })}
+              {subjectPath.points.map((point, index) => (
+                <circle
+                  key={index}
+                  cx={point.x}
+                  cy={point.y}
+                  r="3"
+                  fill={subjectPath.color}
+                  style={{ cursor: 'pointer' }}
+                  onMouseEnter={() => setHoveredDataIndex(point.dataIndex)}
+                  onMouseLeave={() => setHoveredDataIndex(null)}
+                />
+              ))}
             </g>
           );
         })}
@@ -2764,17 +2904,25 @@ function CombinedTrendChart({
         {/* Predicted line - draw on top */}
         {showPredicted && predictedPoints.length > 0 && (
           <g>
+            {/* Gradient fill */}
             {predictedPoints.length > 1 && (
               <path
-                d={predictedPath}
+                d={areaPath(predictedPoints)}
+                fill="url(#grad-predicted)"
+              />
+            )}
+            {/* Smooth line */}
+            {predictedPoints.length > 1 && (
+              <path
+                d={smoothPath(predictedPoints)}
                 fill="none"
                 stroke="#6366f1"
-                strokeWidth="4"
+                strokeWidth="3"
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
             )}
-            {/* Points - only show where all 6 subjects have data */}
+            {/* Points */}
             {predictedPoints.map((point, idx) => (
               <circle
                 key={idx}
@@ -2794,6 +2942,8 @@ function CombinedTrendChart({
   );
 }
 
+
+
 function EditSubjectDialog({
   subject,
   open,
@@ -2810,6 +2960,8 @@ function EditSubjectDialog({
   const [teacher, setTeacher] = useState<string>(subject.teacher || '');
   const [overrideGrade, setOverrideGrade] = useState<string>(subject.overrideGrade?.toString() || '');
   const [manualPercent, setManualPercent] = useState<string>(subject.manualPercent?.toString() || '');
+  
+  const isCore = subject.type === 'CORE' || subject.isCore;
 
   // Reset state when dialog opens
   useEffect(() => {
@@ -2822,14 +2974,24 @@ function EditSubjectDialog({
     }
   }, [open, subject]);
 
+  // Autosave logic
+  useEffect(() => {
+    if (!open) return;
+    
+    const timer = setTimeout(() => {
+      if (name) {
+        const grade = overrideGrade ? parseInt(overrideGrade) : null;
+        const percent = manualPercent ? parseFloat(manualPercent) : null;
+        onUpdate(subject.id, name, type, teacher || null, grade, percent);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [name, type, teacher, overrideGrade, manualPercent, open, subject.id, onUpdate]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (name) {
-      const grade = overrideGrade ? parseInt(overrideGrade) : null;
-      const percent = manualPercent ? parseFloat(manualPercent) : null;
-      onUpdate(subject.id, name, type, teacher || null, grade, percent);
-      onOpenChange(false);
-    }
+    onOpenChange(false);
   };
 
   return (
@@ -2851,18 +3013,19 @@ function EditSubjectDialog({
           </div>
           <div className="space-y-2">
             <Label htmlFor="edit-subject-type">Level</Label>
-            <Select value={type} onValueChange={(v) => setType(v as SubjectType)}>
+            <Select value={type} onValueChange={(v) => setType(v as SubjectType)} disabled={isCore}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="HL">Higher Level (HL)</SelectItem>
                 <SelectItem value="SL">Standard Level (SL)</SelectItem>
+                <SelectItem value="CORE">CORE</SelectItem>
               </SelectContent>
             </Select>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
+          <div className={isCore ? "block" : "grid grid-cols-2 gap-4"}>
+            <div className={isCore ? "hidden" : "space-y-2"}>
               <Label htmlFor="edit-subject-override">Override Grade (1-7)</Label>
               <Input
                 id="edit-subject-override"
@@ -2875,15 +3038,20 @@ function EditSubjectDialog({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-subject-manual-percent">Override Percent (%)</Label>
+              <Label htmlFor="edit-subject-manual-percent">{isCore ? "Manual Grade Percentage (%)" : "Override Percent (%)"}</Label>
               <Input
                 id="edit-subject-manual-percent"
                 type="number"
                 step="any"
                 value={manualPercent}
                 onChange={e => setManualPercent(e.target.value)}
-                placeholder="Manual percent"
+                placeholder={isCore ? "Enter your actual grade percentage..." : "Manual percent"}
               />
+              {isCore && (
+                <p className="text-[10px] text-muted-foreground opacity-50 mt-1">
+                  For Core subjects, the grade (A-E) is estimated based on this percentage.
+                </p>
+              )}
             </div>
           </div>
           <div className="space-y-2">
@@ -2920,9 +3088,9 @@ function EditSubjectDialog({
               Force a specific grade (1-7) regardless of assessments
             </p>
           </div>
-          <DialogFooter>
-            <Button type="submit">Save Changes</Button>
-          </DialogFooter>
+          <div className="pt-2 text-center">
+            <p className="text-[10px] text-muted-foreground/40 italic">Changes are saved automatically</p>
+          </div>
         </form>
       </DialogContent>
     </Dialog>
