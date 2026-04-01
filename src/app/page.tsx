@@ -719,6 +719,13 @@ export default function Home() {
           </DialogHeader>
           <div className="space-y-4 py-2">
             {[
+              { date: 'Apr 1, 2026', changes: [
+                'Unified dashboard fonts and refined layout',
+                'Added Bonus Points matrix (TOK/EE) to help page',
+                'Standardized labels (Theory of Knowledge & Extended Essay)',
+                'Optimistic UI for instant bonus toggle',
+                'Fixed redundant calculation lines in teacher-specific views',
+              ]},
               { date: 'Feb 21, 2026', changes: [
                 'Score hide/show toggle for privacy',
                 'Allow 0-weight categories (excluded from grade)',
