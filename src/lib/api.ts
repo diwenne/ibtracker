@@ -1,6 +1,6 @@
 import { createClient } from './supabase';
 import { SupabaseClient } from '@supabase/supabase-js';
-import { Subject, Assessment, SubjectType, Category, Feedback } from './types';
+import { Subject, Assessment, SubjectType, Category, Feedback, UserSettings } from './types';
 import { Subject as DBSubject, Assessment as DBAssessment } from '@/types/database';
 
 // Helper function to add timeout to promises
@@ -62,6 +62,8 @@ export const api = {
                 predictionDirty: sub.prediction_dirty,
                 teacher: sub.teacher,
                 overrideGrade: sub.override_grade,
+                manualPercent: sub.manual_percent,
+                isCore: sub.is_core,
                 categories: (sub.categories || []).map((cat: any) => ({
                     id: cat.id,
                     name: cat.name,
@@ -71,6 +73,7 @@ export const api = {
                     id: assess.id,
                     name: assess.name,
                     ibGrade: assess.ib_grade,
+                    letterGrade: assess.letter_grade,
                     rawGrade: assess.raw_grade,
                     rawPercent: assess.raw_percent,
                     date: assess.date,
@@ -84,7 +87,7 @@ export const api = {
         }
     },
 
-    createSubject: async (name: string, type: SubjectType, client?: SupabaseClient): Promise<Subject | null> => {
+    createSubject: async (name: string, type: SubjectType, client?: SupabaseClient, isCore: boolean = false): Promise<Subject | null> => {
         const supabase = client || createClient();
         const { data: { session } } = await supabase.auth.getSession();
 
@@ -96,7 +99,8 @@ export const api = {
                 user_id: session.user.id,
                 name,
                 type,
-                target_grade: 7
+                target_grade: 7,
+                is_core: isCore || type === 'CORE'
             })
             .select()
             .single();
@@ -110,6 +114,7 @@ export const api = {
             id: data.id,
             name: data.name,
             type: data.type as SubjectType,
+            isCore: data.is_core,
             assessments: [],
             categories: []
         };
@@ -129,7 +134,7 @@ export const api = {
         return true;
     },
 
-    updateSubject: async (id: string, name: string, type: SubjectType, teacher?: string | null, overrideGrade?: number | null, client?: SupabaseClient): Promise<Subject | null> => {
+    updateSubject: async (id: string, name: string, type: SubjectType, teacher?: string | null, overrideGrade?: number | null, manualPercent?: number | null, client?: SupabaseClient): Promise<Subject | null> => {
         const supabase = client || createClient();
         const updateData: any = { name, type, prediction_dirty: true }; // Mark dirty on update
 
@@ -140,6 +145,10 @@ export const api = {
 
         if (overrideGrade !== undefined) {
             updateData.override_grade = overrideGrade;
+        }
+
+        if (manualPercent !== undefined) {
+            updateData.manual_percent = manualPercent;
         }
 
         const { data, error } = await supabase
@@ -160,6 +169,8 @@ export const api = {
             type: data.type as SubjectType,
             teacher: data.teacher,
             overrideGrade: data.override_grade,
+            manualPercent: data.manual_percent,
+            isCore: data.is_core,
             assessments: [], // We don't need to return assessments here
             categories: []
         };
@@ -178,6 +189,7 @@ export const api = {
                 user_id: session.user.id,
                 name: assessment.name,
                 ib_grade: assessment.ibGrade,
+                letter_grade: assessment.letterGrade,
                 raw_grade: assessment.rawGrade,
                 raw_percent: assessment.rawPercent,
                 date: assessment.date,
@@ -199,6 +211,7 @@ export const api = {
             id: data.id,
             name: data.name,
             ibGrade: data.ib_grade,
+            letterGrade: data.letter_grade,
             rawGrade: data.raw_grade,
             rawPercent: data.raw_percent,
             date: data.date,
@@ -218,6 +231,7 @@ export const api = {
             .update({
                 name: assessment.name,
                 ib_grade: assessment.ibGrade,
+                letter_grade: assessment.letterGrade,
                 raw_grade: assessment.rawGrade,
                 raw_percent: assessment.rawPercent,
                 date: assessment.date,
@@ -241,6 +255,7 @@ export const api = {
             id: data.id,
             name: data.name,
             ibGrade: data.ib_grade,
+            letterGrade: data.letter_grade,
             rawGrade: data.raw_grade,
             rawPercent: data.raw_percent,
             date: data.date,
@@ -516,5 +531,76 @@ export const api = {
             console.error('Exception in createFeedback:', err);
             return null;
         }
+    },
+
+    // User Settings Methods
+    fetchUserSettings: async (client?: SupabaseClient): Promise<UserSettings | null> => {
+        const supabase = client || createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return null;
+
+        const { data, error } = await supabase
+            .from('user_settings')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .single();
+
+        if (error && error.code !== 'PGRST116') {
+            console.error('Error fetching user settings:', error);
+            return null;
+        }
+
+        if (!data) {
+            // Create default settings if not exists
+            const { data: newData, error: createError } = await supabase
+                .from('user_settings')
+                .insert({ user_id: session.user.id, include_bonus: false })
+                .select()
+                .single();
+            
+            if (createError) return null;
+            return {
+                includeBonus: newData.include_bonus,
+                totalScoreOverride: newData.total_score_override,
+                totalPercentOverride: newData.total_percent_override
+            };
+        }
+
+        return {
+            includeBonus: data.include_bonus,
+            totalScoreOverride: data.total_score_override,
+            totalPercentOverride: data.total_percent_override
+        };
+    },
+
+    updateUserSettings: async (settings: Partial<UserSettings>, client?: SupabaseClient): Promise<UserSettings | null> => {
+        const supabase = client || createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return null;
+
+        const updateData: any = {};
+        if (settings.includeBonus !== undefined) updateData.include_bonus = settings.includeBonus;
+        if (settings.totalScoreOverride !== undefined) updateData.total_score_override = settings.totalScoreOverride;
+        if (settings.totalPercentOverride !== undefined) updateData.total_percent_override = settings.totalPercentOverride;
+
+        const { data, error } = await supabase
+            .from('user_settings')
+            .upsert({ user_id: session.user.id, ...updateData }, { onConflict: 'user_id' })
+            .select()
+            .single();
+
+        if (error) {
+            console.error('Error updating user settings:', error);
+            if (error.code === '42P01') {
+              console.error('HINT: The "user_settings" table likely does not exist. Please run the SQL migration in supabase-bonus-migration.sql');
+            }
+            return null;
+        }
+        
+        return {
+            includeBonus: data.include_bonus,
+            totalScoreOverride: data.total_score_override,
+            totalPercentOverride: data.total_percent_override
+        };
     }
 };

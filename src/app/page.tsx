@@ -10,7 +10,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Subject, Assessment, SubjectType, calculatePercentage, getGrade, calculateRawPercent, percentToIBGrade, parseRawGrade, calculatePredictedGrade } from "@/lib/types";
+import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Subject, Assessment, SubjectType, UserSettings, BONUS_POINTS_MATRIX, calculatePercentage, getGrade, calculateRawPercent, percentToIBGrade, parseRawGrade, calculatePredictedGrade, getSubjectLetterGrade } from "@/lib/types";
 import { api } from "@/lib/api";
 import { createClient } from "@/lib/supabase";
 import Auth from "@/components/Auth";
@@ -102,6 +104,7 @@ export default function Home() {
   const [hiddenSubjects, setHiddenSubjects] = useState<Set<string>>(new Set());
   const [showChangelog, setShowChangelog] = useState(false);
   const [hasLoadedSavedState, setHasLoadedSavedState] = useState(false);
+  const [userSettings, setUserSettings] = useState<UserSettings>({ includeBonus: false });
 
   useEffect(() => {
     try {
@@ -135,9 +138,13 @@ export default function Home() {
   const loadSubjects = async () => {
     console.log('loadSubjects: Starting...');
     try {
-      const data = await api.fetchSubjects(supabase);
-      console.log('loadSubjects: Got data:', data);
-      setSubjects(data);
+      const [subjectsData, settingsData] = await Promise.all([
+        api.fetchSubjects(supabase),
+        api.fetchUserSettings(supabase)
+      ]);
+      console.log('loadSubjects: Got data:', subjectsData);
+      setSubjects(subjectsData);
+      if (settingsData) setUserSettings(settingsData);
     } catch (error) {
       console.error('loadSubjects: Error:', error);
     } finally {
@@ -165,6 +172,45 @@ export default function Home() {
     } finally {
       setIsRecalculating(false);
     }
+  };
+
+  const toggleBonus = async (checked: boolean | string) => {
+    const newIncludeBonus = checked === true;
+    
+    // Save previous state for rollback if needed
+    const prevSettings = userSettings;
+    const prevSubjects = subjects;
+    
+    // Optimistically update UI
+    setUserSettings(prev => ({ ...prev, includeBonus: newIncludeBonus }));
+    
+    // Perform background update
+    api.updateUserSettings({ includeBonus: newIncludeBonus }, supabase).then(async (updated) => {
+      if (!updated) {
+        // Rollback on failure
+        setUserSettings(prevSettings);
+        console.error('Failed to update bonus settings');
+        return;
+      }
+      
+      // If enabling, ensure core subjects exist in background
+      if (newIncludeBonus) {
+        const hasTok = subjects.some(s => s.name.toLowerCase().includes('tok') || s.name.toLowerCase().includes('theory of knowledge'));
+        const hasEe = subjects.some(s => s.name.toLowerCase().includes('ee') || s.name.toLowerCase().includes('extended essay'));
+        
+        const creations: Promise<any>[] = [];
+        if (!hasTok) creations.push(api.createSubject('Theory of Knowledge', 'CORE', supabase, true));
+        if (!hasEe) creations.push(api.createSubject('Extended Essay', 'CORE', supabase, true));
+        
+        if (creations.length > 0) {
+          const results = await Promise.all(creations);
+          const newSubjects = results.filter(Boolean);
+          if (newSubjects.length > 0) {
+            setSubjects(prev => [...prev, ...newSubjects]);
+          }
+        }
+      }
+    });
   };
 
   // Check auth and load data
@@ -248,7 +294,7 @@ export default function Home() {
     }
   };
 
-  const updateSubject = async (id: string, name: string, type: SubjectType, teacher?: string | null, overrideGrade?: number | null) => {
+  const updateSubject = async (id: string, name: string, type: SubjectType, teacher?: string | null, overrideGrade?: number | null, manualPercent?: number | null) => {
     // If switching to a teacher with specific categories, handle category reset
     const teacherConfig = getTeacherConfig(teacher || null);
     if (teacherConfig) {
@@ -273,7 +319,7 @@ export default function Home() {
       }
     }
 
-    const updated = await api.updateSubject(id, name, type, teacher, overrideGrade, supabase);
+    const updated = await api.updateSubject(id, name, type, teacher, overrideGrade, manualPercent, supabase);
     if (updated) {
       // Reload all subjects to get updated categories and assessments
       await loadSubjects();
@@ -283,53 +329,80 @@ export default function Home() {
   const addAssessment = async (subjectId: string, assessment: Omit<Assessment, 'id'>) => {
     const newAssessment = await api.createAssessment(subjectId, assessment, supabase);
     if (newAssessment) {
-      // Reload subjects to get updated dirty flag and trigger recalculation
-      await loadSubjects();
+      setSubjects(prev => prev.map(s => s.id === subjectId ? { 
+        ...s, 
+        assessments: [newAssessment, ...s.assessments],
+        predictionDirty: true 
+      } : s));
     }
   };
 
   const updateAssessment = async (subjectId: string, assessmentId: string, updatedAssessment: Omit<Assessment, 'id'>) => {
     const updated = await api.updateAssessment(assessmentId, updatedAssessment, supabase);
     if (updated) {
-      // Reload subjects to get updated dirty flag and trigger recalculation
-      await loadSubjects();
+      setSubjects(prev => prev.map(s => s.id === subjectId ? {
+        ...s,
+        assessments: s.assessments.map(a => a.id === assessmentId ? updated! : a),
+        predictionDirty: true
+      } : s));
     }
   };
 
   const deleteAssessment = async (subjectId: string, assessmentId: string) => {
     const success = await api.deleteAssessment(assessmentId, supabase);
     if (success) {
-      // Reload subjects to get updated dirty flag and trigger recalculation
-      await loadSubjects();
+      setSubjects(prev => prev.map(s => s.id === subjectId ? {
+        ...s,
+        assessments: s.assessments.filter(a => a.id !== assessmentId),
+        predictionDirty: true
+      } : s));
     }
   };
 
-  // Calculate total predicted grade (out of 42)
+  // Calculate total predicted grade
+  const regularSubjects = subjects.filter(s => !s.isCore).slice(0, 6);
+  const coreSubjects = subjects.filter(s => s.isCore);
+  const tokSubject = coreSubjects.find(s => s.name.toLowerCase().includes('tok') || s.name.toUpperCase() === 'TOK');
+  const eeSubject = coreSubjects.find(s => s.name.toLowerCase().includes('ee') || s.name.toUpperCase() === 'EE' || s.name.toLowerCase().includes('extended essay'));
 
-  const totalPredicted = subjects.reduce((total, subject) => {
+  const getSubjectGrade = (subject: Subject) => {
     // Check for manual override first
     if (subject.overrideGrade !== undefined && subject.overrideGrade !== null) {
-      return total + subject.overrideGrade;
+      return subject.overrideGrade;
     }
 
-    if (subject.assessments.length === 0) return total; // Skip subjects with no assessments
+    if (subject.assessments.length === 0) return 0;
 
-    // Check for teacher-specific calculation first
+    // Check for teacher-specific calculation
     const teacherConfig = getTeacherConfig(subject.teacher || null);
     const teacherCalculation = teacherConfig?.calculateGrade
       ? teacherConfig.calculateGrade(subject, subject.assessments)
       : null;
 
     if (teacherCalculation) {
-      return total + teacherCalculation.grade;
+      return teacherCalculation.grade;
     }
 
-    // Use exact mathematical local prediction
+    // Use local prediction
     const localPrediction = calculateLocalPrediction(subject, subject.assessments, subject.categories || []);
     const basicGrade = calculatePredictedGrade(subject.assessments);
 
-    return total + (localPrediction?.grade || basicGrade);
+    return localPrediction?.grade || basicGrade;
+  };
+
+  const subjectsTotal = regularSubjects.reduce((total, subject) => {
+    return total + getSubjectGrade(subject);
   }, 0);
+
+  let bonusPoints = 0;
+  if (userSettings.includeBonus && tokSubject && eeSubject) {
+    const tokGrade = getSubjectLetterGrade(tokSubject);
+    const eeGrade = getSubjectLetterGrade(eeSubject);
+    bonusPoints = (tokGrade !== 'N' && eeGrade !== 'N') ? (BONUS_POINTS_MATRIX[tokGrade]?.[eeGrade] ?? 0) : 0;
+  }
+
+  const totalPredicted = userSettings.totalScoreOverride ?? (subjectsTotal + bonusPoints);
+  const maxPoints = userSettings.includeBonus ? 45 : 42;
 
   // Determine color for total predicted grade
   const getTotalColor = (total: number) => {
@@ -425,12 +498,12 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-background text-foreground font-sans flex flex-col">
       {/* Header */}
-      <header className="bg-background border-b">
-        <div className="container mx-auto px-6 py-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+      <header className="bg-background/20 backdrop-blur-sm border-b border-border/10">
+        <div className="container mx-auto px-6 py-2 flex items-center justify-between">
+          <div className="flex items-center gap-2">
             <div className="flex items-center gap-2">
-              <img src="/iblogo.png" alt="IB" className="h-8 w-auto" />
-              <h1 className="font-bold text-2xl tracking-tight text-foreground">Tracker</h1>
+              <img src="/iblogo.png" alt="IB" className="h-6 w-auto" />
+              <h1 className="font-bold text-xl tracking-tighter text-foreground">Tracker</h1>
             </div>
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setShowHelp(true)}>
               <Info className="h-4 w-4" />
@@ -492,39 +565,22 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="flex-1 flex flex-col items-center justify-center px-4 py-6">
-
-        {/* Giant Total Predicted Grade - Hero */}
-        <section className="flex flex-col items-center justify-center mb-12">
-          <div className="flex items-center gap-3 mb-3">
-            <p className="text-xs text-muted-foreground uppercase tracking-wide">Predicted Total</p>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-5 w-5 text-muted-foreground hover:text-foreground hover:bg-transparent active:bg-transparent"
-              onClick={handleRecalculateAll}
-              disabled={isRecalculating || subjects.length === 0}
-              title="Recalculate all AI predictions"
-            >
-              <RefreshCw className={`h-3 w-3 ${isRecalculating ? 'animate-spin' : ''}`} />
-            </Button>
+      <main className="flex-1 flex flex-col items-center justify-center px-4 py-4 min-h-0 overflow-hidden">
+        <section className="group relative flex flex-col items-center justify-center mb-2">
+          <div className="flex items-center gap-2">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-[0.2em] opacity-30">Predicted Total</p>
           </div>
-          <div className="flex items-baseline gap-3">
-            <span className={`text-[10rem] font-bold leading-none ${hideMainScore ? 'text-muted-foreground/40' : `bg-gradient-to-br ${getTotalColor(totalPredicted)} bg-clip-text text-transparent`}`}>
+          <div className="flex items-baseline gap-1">
+            <span className={`text-[8.5rem] font-bold leading-none px-2 ${hideMainScore ? 'text-muted-foreground/30' : `bg-gradient-to-br ${getTotalColor(totalPredicted)} bg-clip-text text-transparent`}`}>
               {hideMainScore ? '●●' : totalPredicted}
             </span>
-            <span className={`text-5xl font-medium ${hideMainScore ? 'text-muted-foreground/30' : 'text-muted-foreground'}`}>{hideMainScore ? '/●●' : '/42'}</span>
+            <span className={`text-3xl font-medium ${hideMainScore ? 'text-muted-foreground/20' : 'text-muted-foreground opacity-20'}`}>{hideMainScore ? '/●●' : `/${maxPoints}`}</span>
+            
             <button
               type="button"
-              className="self-center flex items-center justify-center h-7 w-7 rounded-full border border-border/60 text-muted-foreground hover:text-foreground hover:border-border transition-colors bg-background/50"
+              className="absolute -right-10 self-center flex items-center justify-center h-7 w-7 rounded-full border border-border/40 text-muted-foreground/60 hover:text-foreground hover:border-border transition-all opacity-0 group-hover:opacity-100 bg-background/50 backdrop-blur-sm"
               onClick={() => {
-                const willHide = !hideMainScore;
-                setHideMainScore(willHide);
-                if (willHide) {
-                  setHiddenSubjects(new Set(subjects.map(s => s.id)));
-                } else {
-                  setHiddenSubjects(new Set());
-                }
+                setHideMainScore(!hideMainScore);
               }}
               title={hideMainScore ? 'Show all scores' : 'Hide all scores'}
             >
@@ -534,9 +590,9 @@ export default function Home() {
         </section>
 
         {/* Subject Grades Grid - 2 per row, transparent */}
-        <section className="w-full max-w-3xl">
-          <div className="grid grid-cols-2 gap-x-16 gap-y-4">
-            {subjects.map((subject) => {
+        <section className="w-full max-w-2xl">
+          <div className="grid grid-cols-2 gap-x-12 gap-y-3">
+            {regularSubjects.map((subject) => {
               // Use local prediction for weighted percentage (respects category weights)
               const localPred = calculateLocalPrediction(subject, subject.assessments, subject.categories || []);
 
@@ -550,8 +606,8 @@ export default function Home() {
                 rawPercentage = calculatePercentage(subject.assessments, subject.type);
               }
 
-              // Round to integer for SL subjects
-              const percentage = subject.type === 'SL' ? Math.round(rawPercentage) : rawPercentage;
+              // Use manual percent if available, otherwise use prediction
+              const percentage = subject.manualPercent ?? (subject.type === 'SL' ? Math.round(rawPercentage) : rawPercentage);
               const grade = calculatePredictedGrade(subject.assessments);
 
               return (
@@ -585,10 +641,71 @@ export default function Home() {
               );
             })}
           </div>
+
+          {userSettings.includeBonus && (
+            <div className="mt-4 border-t border-border/10 pt-4">
+              <h3 className="text-center text-[9px] text-muted-foreground/30 uppercase tracking-[0.2em] mb-2 font-medium italic">Bonus Points</h3>
+              <div className="grid grid-cols-2 gap-x-12 gap-y-2">
+                {coreSubjects.map((subject) => {
+                  const percentage = subject.manualPercent ?? 0;
+                  const grade = 0; // Not used for CORE
+                  const nameLower = subject.name.toLowerCase();
+                  const displayName = nameLower === 'tok' ? 'Theory of Knowledge' : (nameLower === 'ee' ? 'Extended Essay' : subject.name);
+
+                  return (
+                    <SubjectGradeCard
+                      key={subject.id}
+                      subject={subject}
+                      grade={grade}
+                      percentage={percentage}
+                      hideScores={hiddenSubjects.has(subject.id)}
+                      onToggleHide={() => {
+                        setHiddenSubjects(prev => {
+                          const next = new Set(prev);
+                          if (next.has(subject.id)) {
+                            next.delete(subject.id);
+                          } else {
+                            next.add(subject.id);
+                          }
+                          return next;
+                        });
+                      }}
+                      onAddAssessment={addAssessment}
+                      onUpdateAssessment={updateAssessment}
+                      onDeleteAssessment={deleteAssessment}
+                      onUpdateSubject={updateSubject}
+                      onManageCategories={(subject) => {
+                        setSelectedSubjectForCategories(subject);
+                        setManageCategoriesOpen(true);
+                      }}
+                      onRefresh={loadSubjects}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </section>
       </main>
 
-      <Footer onShowChangelog={() => setShowChangelog(true)} />
+      <footer className="py-2 border-t border-border/10 bg-background/50">
+        <div className="container mx-auto px-6 flex justify-between items-center opacity-30 hover:opacity-100 transition-opacity">
+          <p className="text-[9px] uppercase tracking-widest text-muted-foreground">© 2026 IB Tracker</p>
+          <button onClick={() => setShowChangelog(true)} className="text-[9px] uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors bg-transparent border-none p-0 cursor-pointer">Changelog</button>
+        </div>
+      </footer>
+
+      {/* Mini Bonus Toggle in corner - Bottom Right */}
+      <div className="fixed bottom-4 right-4 z-50 flex items-center space-x-2 bg-background/80 backdrop-blur-sm p-2 rounded-lg border border-border/50 opacity-40 hover:opacity-100 transition-opacity">
+        <Checkbox
+          id="bonus-mode-small"
+          checked={userSettings.includeBonus}
+          onCheckedChange={toggleBonus}
+        />
+        <Label htmlFor="bonus-mode-small" className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest cursor-pointer select-none">
+          Bonus
+        </Label>
+      </div>
 
       {/* Changelog Dialog */}
       <Dialog open={showChangelog} onOpenChange={setShowChangelog}>
@@ -649,7 +766,7 @@ export default function Home() {
         </DialogContent>
       </Dialog>
 
-      {selectedSubjectForCategories && (
+      {selectedSubjectForCategories && manageCategoriesOpen && (
         <ManageCategoriesDialog
           subject={selectedSubjectForCategories}
           open={manageCategoriesOpen}
@@ -833,8 +950,15 @@ function SubjectGradeCard({
 
   if (subject.overrideGrade !== undefined && subject.overrideGrade !== null) {
     displayGrade = subject.overrideGrade;
-    displayPercentage = localPrediction?.percentage ?? percentage;
-    predictionDetails = "Manual Override";
+    displayPercentage = subject.manualPercent ?? localPrediction?.percentage ?? percentage;
+    predictionDetails = `Manual Grade Override (Predicted: ${localPrediction?.grade || grade})`;
+    if (localPrediction?.details) predictionDetails += ` • ${localPrediction.details}`;
+    isOverride = true;
+  } else if (subject.manualPercent !== undefined && subject.manualPercent !== null) {
+    displayPercentage = subject.manualPercent;
+    displayGrade = getGrade(displayPercentage, subject.type);
+    predictionDetails = `Manual Percentage Override (Exact: ${localPrediction?.percentage?.toFixed(1) || percentage.toFixed(1)}%)`;
+    if (localPrediction?.details) predictionDetails += ` • ${localPrediction.details}`;
     isOverride = true;
   } else if (teacherCalculation) {
     // Use teacher-specific calculation
@@ -848,6 +972,9 @@ function SubjectGradeCard({
     displayPercentage = localPrediction?.percentage ?? percentage;
     predictionDetails = localPrediction?.details;
   }
+
+  const isCore = subject.type === 'CORE' || subject.isCore;
+  const displayLetterGrade = isCore ? getSubjectLetterGrade(subject) : null;
 
   // Determine color based on grade quality
   const getGradeColor = (grade: number) => {
@@ -864,26 +991,27 @@ function SubjectGradeCard({
       <DialogTrigger asChild>
         <div className="group cursor-pointer transition-all hover:opacity-80">
           {/* Just the number and subject name - transparent, minimal */}
-          <div className="flex flex-col items-center space-y-1.5">
+          <div className="flex flex-col items-center space-y-1">
             <div className="relative inline-flex items-center justify-center">
-              <span className={`text-4xl font-semibold ${subject.assessments.length === 0 ? 'text-muted-foreground/60' : hideScores ? 'text-muted-foreground/40' : getGradeColor(displayGrade)}`}>
-                {subject.assessments.length === 0 ? 'N/A' : hideScores ? '●' : displayGrade}
+              <span className={`${isCore ? 'text-2xl' : 'text-5xl'} font-semibold ${subject.assessments.length === 0 ? 'text-muted-foreground/30 font-medium' : hideScores ? 'text-muted-foreground/40' : getGradeColor(isCore ? 7 : displayGrade)}`}>
+                {subject.assessments.length === 0 ? '-' : hideScores ? '●' : isCore ? displayLetterGrade : displayGrade}
               </span>
               <button
                 type="button"
-                className="absolute -right-6 flex items-center justify-center h-4 w-4 rounded-full text-muted-foreground/40 hover:text-muted-foreground transition-colors opacity-0 group-hover:opacity-100"
+                className="absolute -right-7 flex items-center justify-center h-4.5 w-4.5 rounded-full text-muted-foreground/30 hover:text-muted-foreground transition-colors opacity-0 group-hover:opacity-100"
                 onClick={(e) => { e.stopPropagation(); onToggleHide(); }}
                 title={hideScores ? 'Show score' : 'Hide score'}
               >
                 {hideScores ? <Eye className="h-2.5 w-2.5" /> : <EyeOff className="h-2.5 w-2.5" />}
               </button>
             </div>
-            <div className="text-center">
-              <p className="text-sm font-medium text-foreground/80">{subject.name}</p>
-              <p className="text-xs text-muted-foreground/60">
-                {subject.type}{subject.assessments.length === 0 ? ' • No data' : hideScores ? ' • ●●%' : displayPercentage > 0 ? ` • ${displayPercentage.toFixed(0)}%` : ''}
+            <div className="text-center -mt-1">
+              <p className={`${isCore ? 'text-[12px] opacity-70' : 'text-[15px] font-medium'} text-foreground/80`}>
+                {subject.name.toLowerCase() === 'tok' ? 'Theory of Knowledge' : (subject.name.toLowerCase() === 'ee' ? 'Extended Essay' : subject.name)}
+              </p>
+              <p className={`${isCore ? 'text-[8px] opacity-30' : 'text-[9px] text-muted-foreground/40'} leading-tight`}>
+                {subject.assessments.length === 0 ? 'No data' : hideScores ? '●●%' : `${isCore ? `${displayLetterGrade || 'N'}` : `${displayPercentage.toFixed(0)}% • ${subject.type}`}`}
                 {isTeacher && subject.teacher && ` • ${subject.teacher.toUpperCase()}`}
-                {isOverride && ' • Manual'}
               </p>
             </div>
             {isPredicting && <span className="text-[10px] text-muted-foreground animate-pulse">Updating...</span>}
@@ -895,7 +1023,7 @@ function SubjectGradeCard({
         <DialogHeader>
           <div className="flex items-center justify-between gap-4 pr-6 sm:pr-8">
             <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
-              {subject.name} ({subject.type})
+              {subject.name} {!isCore && `(${subject.type})`}
               <Button
                 variant="ghost"
                 size="icon"
@@ -923,7 +1051,7 @@ function SubjectGradeCard({
               ) : (
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center gap-2">
-                    <span>Predicted Grade: <strong>{displayGrade}</strong> {displayPercentage > 0 && `(${displayPercentage.toFixed(1)}%)`}</span>
+                    <span>Predicted Grade: <strong>{isCore ? displayLetterGrade : displayGrade}</strong> {!isCore && displayPercentage > 0 && `(${displayPercentage.toFixed(1)}%)`}</span>
                     {isTeacher && subject.teacher && <span className="text-[10px] bg-blue-500 text-white px-1.5 py-0.5 rounded">{subject.teacher.toUpperCase()}</span>}
                     {isOverride && <span className="text-[10px] bg-purple-500 text-white px-1.5 py-0.5 rounded">Manual</span>}
                   </div>
@@ -1121,7 +1249,7 @@ function SubjectGradeCard({
                           </span>
                         )}
                         <span className="font-medium whitespace-nowrap">
-                          IB: {displayGrade}
+                          {isCore ? `Grade: ${assessment.letterGrade || (assessment.ibGrade ? (assessment.ibGrade >= 7 ? 'A' : assessment.ibGrade >= 6 ? 'B' : 'C') : 'N')}` : `IB: ${displayGrade}`}
                         </span>
                       </div>
                       <Button
@@ -1310,7 +1438,10 @@ function AddAssessmentDialog({ subject, onAdd }: { subject: Subject, onAdd: (sid
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState("");
   const [categoryId, setCategoryId] = useState<string>("uncategorized");
+  const [letterGrade, setLetterGrade] = useState<string>("");
   const [open, setOpen] = useState(false);
+  
+  const isCore = subject.type === 'CORE' || subject.isCore;
 
   // Reset form when dialog opens
   useEffect(() => {
@@ -1322,6 +1453,7 @@ function AddAssessmentDialog({ subject, onAdd }: { subject: Subject, onAdd: (sid
       setDate(new Date().toISOString().split('T')[0]);
       setNotes("");
       setCategoryId("uncategorized");
+      setLetterGrade("");
     }
   }, [open]);
 
@@ -1360,6 +1492,7 @@ function AddAssessmentDialog({ subject, onAdd }: { subject: Subject, onAdd: (sid
     onAdd(subject.id, {
       name,
       ibGrade: ibGrade ? parseInt(ibGrade) : null,
+      letterGrade: letterGrade || null,
       rawGrade: rawGrade || null,
       rawPercent: rawPercent ? parseFloat(rawPercent) : null,
       date,
@@ -1419,23 +1552,45 @@ function AddAssessmentDialog({ subject, onAdd }: { subject: Subject, onAdd: (sid
           </div>
 
           <div className="grid grid-cols-2 gap-3 sm:gap-4">
-            <div className="space-y-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0 sm:col-span-2">
-              <Label htmlFor="ibGrade" className="text-sm sm:text-right sm:col-span-1">
-                IB Grade
-              </Label>
-              <div className="col-span-3">
-                <Input
-                  id="ibGrade"
-                  type="number"
-                  min="1"
-                  max="7"
-                  value={ibGrade}
-                  onChange={(e) => setIbGrade(e.target.value)}
-                  placeholder="1-7"
-                  className="text-sm h-9"
-                />
+            {isCore ? (
+              <div className="space-y-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0 sm:col-span-2">
+                <Label htmlFor="letterGrade" className="text-sm sm:text-right sm:col-span-1">
+                  Grade
+                </Label>
+                <div className="col-span-3">
+                  <Select value={letterGrade} onValueChange={setLetterGrade}>
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue placeholder="A-E" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="A">A</SelectItem>
+                      <SelectItem value="B">B</SelectItem>
+                      <SelectItem value="C">C</SelectItem>
+                      <SelectItem value="D">D</SelectItem>
+                      <SelectItem value="E">E</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="space-y-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0 sm:col-span-2">
+                <Label htmlFor="ibGrade" className="text-sm sm:text-right sm:col-span-1">
+                  IB Grade
+                </Label>
+                <div className="col-span-3">
+                  <Input
+                    id="ibGrade"
+                    type="number"
+                    min="1"
+                    max="7"
+                    value={ibGrade}
+                    onChange={(e) => setIbGrade(e.target.value)}
+                    placeholder="1-7"
+                    className="text-sm h-9"
+                  />
+                </div>
+              </div>
+            )}
 
             <div className="space-y-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0 sm:col-span-2">
               <Label htmlFor="rawGrade" className="text-sm sm:text-right sm:col-span-1">
@@ -1524,6 +1679,9 @@ function EditAssessmentDialog({
   const [date, setDate] = useState(assessment.date);
   const [notes, setNotes] = useState(assessment.notes || "");
   const [categoryId, setCategoryId] = useState<string>(assessment.categoryId || "uncategorized");
+  const [letterGrade, setLetterGrade] = useState<string>(assessment.letterGrade || "");
+  
+  const isCore = subject.type === 'CORE' || subject.isCore;
 
   const handlePercentChange = (value: string) => {
     setRawPercent(value);
@@ -1558,6 +1716,7 @@ function EditAssessmentDialog({
     onUpdate({
       name,
       ibGrade: ibGrade ? parseInt(ibGrade) : null,
+      letterGrade: letterGrade || null,
       rawGrade: rawGrade || null,
       rawPercent: rawPercent ? parseFloat(rawPercent) : null,
       date,
@@ -1610,23 +1769,45 @@ function EditAssessmentDialog({
           </div>
 
           <div className="grid grid-cols-2 gap-3 sm:gap-4">
-            <div className="space-y-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0 sm:col-span-2">
-              <Label htmlFor="edit-ibGrade" className="text-sm sm:text-right sm:col-span-1">
-                IB Grade
-              </Label>
-              <div className="col-span-3">
-                <Input
-                  id="edit-ibGrade"
-                  type="number"
-                  min="1"
-                  max="7"
-                  value={ibGrade}
-                  onChange={(e) => setIbGrade(e.target.value)}
-                  placeholder="1-7"
-                  className="text-sm h-9"
-                />
+            {isCore ? (
+              <div className="space-y-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0 sm:col-span-2">
+                <Label htmlFor="edit-letterGrade" className="text-sm sm:text-right sm:col-span-1">
+                  Grade
+                </Label>
+                <div className="col-span-3">
+                  <Select value={letterGrade} onValueChange={setLetterGrade}>
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue placeholder="A-E" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="A">A</SelectItem>
+                      <SelectItem value="B">B</SelectItem>
+                      <SelectItem value="C">C</SelectItem>
+                      <SelectItem value="D">D</SelectItem>
+                      <SelectItem value="E">E</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="space-y-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0 sm:col-span-2">
+                <Label htmlFor="edit-ibGrade" className="text-sm sm:text-right sm:col-span-1">
+                  IB Grade
+                </Label>
+                <div className="col-span-3">
+                  <Input
+                    id="edit-ibGrade"
+                    type="number"
+                    min="1"
+                    max="7"
+                    value={ibGrade}
+                    onChange={(e) => setIbGrade(e.target.value)}
+                    placeholder="1-7"
+                    className="text-sm h-9"
+                  />
+                </div>
+              </div>
+            )}
 
             <div className="space-y-2 sm:grid sm:grid-cols-4 sm:items-center sm:gap-4 sm:space-y-0 sm:col-span-2">
               <Label htmlFor="edit-rawGrade" className="text-sm sm:text-right sm:col-span-1">
@@ -1868,6 +2049,73 @@ function HelpView({ onBack }: { onBack: () => void }) {
                   <p className="text-muted-foreground text-sm">
                     Note: SL teachers typically don't apply heavy curves, converting raw percentages more directly to IB grades.
                   </p>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="bonus-matrix">
+              <AccordionTrigger className="text-lg font-semibold">Bonus Points Matrix (TOK & EE)</AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-4">
+                  <p className="text-muted-foreground text-sm">
+                    TOK and Extended Essay (EE) combine to award up to 3 bonus points. Use this table to find your score:
+                  </p>
+                  
+                  <div className="overflow-x-auto rounded-lg border border-border">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-muted/50 border-b border-border">
+                          <th className="p-2 text-left border-r border-border font-bold">TOK / EE</th>
+                          <th className="p-2 text-center border-r border-border font-bold text-green-600">A</th>
+                          <th className="p-2 text-center border-r border-border font-bold text-lime-600">B</th>
+                          <th className="p-2 text-center border-r border-border font-bold text-yellow-600">C</th>
+                          <th className="p-2 text-center border-r border-border font-bold text-orange-600">D</th>
+                          <th className="p-2 text-center font-bold text-red-600">E</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr className="border-b border-border">
+                          <td className="p-2 font-bold bg-muted/20 border-r border-border text-center">A</td>
+                          <td className="p-2 text-center border-r border-border bg-green-500/10 font-bold">3</td>
+                          <td className="p-2 text-center border-r border-border bg-green-500/10 font-bold">3</td>
+                          <td className="p-2 text-center border-r border-border bg-lime-500/10">2</td>
+                          <td className="p-2 text-center border-r border-border bg-lime-500/10">2</td>
+                          <td rowSpan={4} className="p-2 text-center bg-red-500/20 text-red-800 font-bold text-[10px] leading-tight uppercase align-middle">Failing Condition</td>
+                        </tr>
+                        <tr className="border-b border-border">
+                          <td className="p-2 font-bold bg-muted/20 border-r border-border text-center">B</td>
+                          <td className="p-2 text-center border-r border-border bg-green-500/10 font-bold">3</td>
+                          <td className="p-2 text-center border-r border-border bg-lime-500/10">2</td>
+                          <td className="p-2 text-center border-r border-border bg-lime-500/10">2</td>
+                          <td className="p-2 text-center border-r border-border bg-yellow-500/10">1</td>
+                        </tr>
+                        <tr className="border-b border-border">
+                          <td className="p-2 font-bold bg-muted/20 border-r border-border text-center">C</td>
+                          <td className="p-2 text-center border-r border-border bg-lime-500/10">2</td>
+                          <td className="p-2 text-center border-r border-border bg-lime-500/10">2</td>
+                          <td className="p-2 text-center border-r border-border bg-yellow-500/10">1</td>
+                          <td className="p-2 text-center border-r border-border bg-orange-500/5">0</td>
+                        </tr>
+                        <tr className="border-b border-border">
+                          <td className="p-2 font-bold bg-muted/20 border-r border-border text-center">D</td>
+                          <td className="p-2 text-center border-r border-border bg-lime-500/10">2</td>
+                          <td className="p-2 text-center border-r border-border bg-yellow-500/10">1</td>
+                          <td className="p-2 text-center border-r border-border bg-orange-500/5">0</td>
+                          <td className="p-2 text-center border-r border-border bg-orange-500/5">0</td>
+                        </tr>
+                        <tr>
+                          <td className="p-2 font-bold bg-muted/20 border-r border-border text-center">E</td>
+                          <td colSpan={5} className="p-2 text-center bg-red-500/20 text-red-800 font-bold text-[10px] leading-tight uppercase">Failing Condition</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="p-3 rounded-lg bg-red-500/5 border border-red-500/10">
+                    <p className="text-red-700/80 text-[11px] leading-relaxed italic text-center">
+                      Note: A grade E in either the Extended Essay or Theory of Knowledge will result in an IB Diploma not being awarded.
+                    </p>
+                  </div>
                 </div>
               </AccordionContent>
             </AccordionItem>
@@ -2548,12 +2796,13 @@ function EditSubjectDialog({
   subject: Subject;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onUpdate: (id: string, name: string, type: SubjectType, teacher?: string | null, overrideGrade?: number | null) => void;
+  onUpdate: (id: string, name: string, type: SubjectType, teacher?: string | null, overrideGrade?: number | null, manualPercent?: number | null) => void;
 }) {
   const [name, setName] = useState(subject.name);
   const [type, setType] = useState<SubjectType>(subject.type);
   const [teacher, setTeacher] = useState<string>(subject.teacher || '');
   const [overrideGrade, setOverrideGrade] = useState<string>(subject.overrideGrade?.toString() || '');
+  const [manualPercent, setManualPercent] = useState<string>(subject.manualPercent?.toString() || '');
 
   // Reset state when dialog opens
   useEffect(() => {
@@ -2562,6 +2811,7 @@ function EditSubjectDialog({
       setType(subject.type);
       setTeacher(subject.teacher || '');
       setOverrideGrade(subject.overrideGrade?.toString() || '');
+      setManualPercent(subject.manualPercent?.toString() || '');
     }
   }, [open, subject]);
 
@@ -2569,7 +2819,8 @@ function EditSubjectDialog({
     e.preventDefault();
     if (name) {
       const grade = overrideGrade ? parseInt(overrideGrade) : null;
-      onUpdate(subject.id, name, type, teacher || null, grade);
+      const percent = manualPercent ? parseFloat(manualPercent) : null;
+      onUpdate(subject.id, name, type, teacher || null, grade, percent);
       onOpenChange(false);
     }
   };
@@ -2602,6 +2853,31 @@ function EditSubjectDialog({
                 <SelectItem value="SL">Standard Level (SL)</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-subject-override">Override Grade (1-7)</Label>
+              <Input
+                id="edit-subject-override"
+                type="number"
+                min="1"
+                max="7"
+                value={overrideGrade}
+                onChange={e => setOverrideGrade(e.target.value)}
+                placeholder="Manual grade"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-subject-manual-percent">Override Percent (%)</Label>
+              <Input
+                id="edit-subject-manual-percent"
+                type="number"
+                step="any"
+                value={manualPercent}
+                onChange={e => setManualPercent(e.target.value)}
+                placeholder="Manual percent"
+              />
+            </div>
           </div>
           <div className="space-y-2">
             <Label htmlFor="edit-subject-teacher">Teacher</Label>

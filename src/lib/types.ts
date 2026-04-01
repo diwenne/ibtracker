@@ -1,4 +1,4 @@
-export type SubjectType = 'HL' | 'SL';
+export type SubjectType = 'HL' | 'SL' | 'CORE';
 
 export interface Category {
     id: string;
@@ -19,6 +19,7 @@ export interface Assessment {
     id: string;
     name: string;
     ibGrade: number | null; // IB grade (1-7) - Now optional for SL if raw percent exists
+    letterGrade?: string | null; 
     rawGrade?: string | null; // raw grade as fraction (e.g., "31/32")
     rawPercent?: number | null; // percentage (0-100)
     date: string;
@@ -37,7 +38,45 @@ export interface Subject {
     predictionDirty?: boolean;
     teacher?: string | null;
     overrideGrade?: number | null;
+    manualPercent?: number | null;
+    isCore?: boolean;
 }
+
+export interface UserSettings {
+    includeBonus: boolean;
+    totalScoreOverride?: number | null;
+    totalPercentOverride?: number | null;
+}
+
+export const BONUS_POINTS_MATRIX: Record<string, Record<string, number>> = {
+    'A': { 'A': 3, 'B': 3, 'C': 2, 'D': 2, 'E': 0 }, // E combined with anything is special
+    'B': { 'A': 3, 'B': 2, 'C': 2, 'D': 1, 'E': 0 },
+    'C': { 'A': 2, 'B': 2, 'C': 1, 'D': 0, 'E': 0 },
+    'D': { 'A': 2, 'B': 1, 'C': 0, 'D': 0, 'E': 0 },
+    'E': { 'A': 0, 'B': 0, 'C': 0, 'D': 0, 'E': 0 } // E is a failing condition, but points-wise it's 0 or failing.
+};
+
+// Helper to determine if an E exists
+export const isFailingCondition = (tokGrade: string, eeGrade: string) => {
+    return tokGrade === 'E' || eeGrade === 'E';
+};
+
+export const calculateBonusPoints = (tokGrade: string, eeGrade: string): number => {
+    if (isFailingCondition(tokGrade, eeGrade)) return 0;
+    return BONUS_POINTS_MATRIX[tokGrade]?.[eeGrade] ?? 0;
+};
+
+export const getSubjectLetterGrade = (subject: Subject): string => {
+    if (subject.assessments.length === 0) return 'N';
+    // Use the most recent assessment's letter grade
+    const grades = subject.assessments
+        .filter(a => a.letterGrade)
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        .map(a => a.letterGrade!);
+    
+    if (grades.length === 0) return 'N';
+    return grades[0];
+};
 
 // Helper to parse raw grade fraction like "31/32"
 export const parseRawGrade = (rawGrade: string): { score: number; total: number } | null => {
