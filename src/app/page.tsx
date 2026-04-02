@@ -1358,7 +1358,6 @@ function SubjectGradeCard({
               onOpenChange={(open) => !open && setEditingAssessment(null)}
               onUpdate={(updated) => {
                 onUpdateAssessment(subject.id, editingAssessment.id, updated);
-                setEditingAssessment(null);
               }}
             />
           )}
@@ -1783,8 +1782,16 @@ function EditAssessmentDialog({
   };
 
   // Autosave logic
+  const isInitialMount = useRef(true);
+
   useEffect(() => {
     if (!open) return;
+
+    // Skip the initial render - no changes have been made yet
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
 
     const timer = setTimeout(() => {
       if (name && (ibGrade || rawPercent || rawGrade || letterGrade)) {
