@@ -1000,15 +1000,19 @@ function SubjectGradeCard({
 
   if (subject.overrideGrade !== undefined && subject.overrideGrade !== null) {
     displayGrade = subject.overrideGrade;
-    displayPercentage = subject.manualPercent ?? localPrediction?.percentage ?? percentage;
-    predictionDetails = `Manual Grade Override (Predicted: ${localPrediction?.grade || grade})`;
-    if (localPrediction?.details) predictionDetails += ` • ${localPrediction.details}`;
+    displayPercentage = subject.manualPercent ?? teacherCalculation?.percentage ?? localPrediction?.percentage ?? percentage;
+    predictionDetails = `Manual Grade Override (Predicted: ${teacherCalculation?.grade ?? localPrediction?.grade ?? grade})`;
+    // Prefer teacher-specific breakdown, fall back to local prediction details
+    const calculationDetails = teacherCalculation?.explanation || localPrediction?.details;
+    if (calculationDetails) predictionDetails += ` • ${calculationDetails}`;
     isOverride = true;
   } else if (subject.manualPercent !== undefined && subject.manualPercent !== null) {
     displayPercentage = subject.manualPercent;
     displayGrade = getGrade(displayPercentage, subject.type);
-    predictionDetails = `Manual Percentage Override (Exact: ${localPrediction?.percentage?.toFixed(1) || percentage.toFixed(1)}%)`;
-    if (localPrediction?.details) predictionDetails += ` • ${localPrediction.details}`;
+    predictionDetails = `Manual Percentage Override (Exact: ${teacherCalculation?.percentage?.toFixed(1) ?? localPrediction?.percentage?.toFixed(1) ?? percentage.toFixed(1)}%)`;
+    // Prefer teacher-specific breakdown, fall back to local prediction details
+    const calculationDetails = teacherCalculation?.explanation || localPrediction?.details;
+    if (calculationDetails) predictionDetails += ` • ${calculationDetails}`;
     isOverride = true;
   } else if (teacherCalculation) {
     // Use teacher-specific calculation
