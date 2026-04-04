@@ -2987,15 +2987,17 @@ function EditSubjectDialog({
   
   const isCore = subject.type === 'CORE' || subject.isCore;
 
-  // Reset state when dialog opens
+  // Reset state when dialog opens or transitions from closed to open
+  const prevOpen = useRef(open);
   useEffect(() => {
-    if (open) {
+    if (open && !prevOpen.current) {
       setName(subject.name);
       setType(subject.type);
       setTeacher(subject.teacher || '');
       setOverrideGrade(subject.overrideGrade?.toString() || '');
       setManualPercent(subject.manualPercent?.toString() || '');
     }
+    prevOpen.current = open;
   }, [open, subject]);
 
   // Autosave logic
