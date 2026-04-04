@@ -300,7 +300,7 @@ export default function Home() {
     const teacherConfig = getTeacherConfig(teacher || null);
     if (teacherConfig) {
       const subject = subjects.find(s => s.id === id);
-      if (subject) {
+      if (subject && subject.teacher !== (teacher || null)) {
         // Delete all existing categories
         for (const category of subject.categories) {
           await api.deleteCategory(category.id, supabase);
@@ -1813,6 +1813,18 @@ function EditAssessmentDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (name && (ibGrade || rawPercent || rawGrade || letterGrade)) {
+      onUpdate({
+        name,
+        ibGrade: ibGrade ? parseInt(ibGrade) : null,
+        letterGrade: letterGrade || null,
+        rawGrade: rawGrade || null,
+        rawPercent: rawPercent ? parseFloat(rawPercent) : null,
+        date,
+        notes: notes || null,
+        categoryId: categoryId === "uncategorized" ? null : categoryId
+      });
+    }
     onOpenChange(false);
   };
 
@@ -1957,8 +1969,9 @@ function EditAssessmentDialog({
             />
           </div>
 
-          <div className="pt-2 text-center">
+          <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-4">
             <p className="text-[10px] text-muted-foreground/40 italic">Changes are saved automatically</p>
+            <Button type="submit" size="sm">Save & Close</Button>
           </div>
         </form>
       </DialogContent>
@@ -3002,6 +3015,11 @@ function EditSubjectDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (name) {
+      const grade = overrideGrade ? parseInt(overrideGrade) : null;
+      const percent = manualPercent ? parseFloat(manualPercent) : null;
+      onUpdate(subject.id, name, type, teacher || null, grade, percent);
+    }
     onOpenChange(false);
   };
 
@@ -3099,8 +3117,9 @@ function EditSubjectDialog({
               Force a specific grade (1-7) regardless of assessments
             </p>
           </div>
-          <div className="pt-2 text-center">
+          <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-4">
             <p className="text-[10px] text-muted-foreground/40 italic">Changes are saved automatically</p>
+            <Button type="submit" size="sm">Save & Close</Button>
           </div>
         </form>
       </DialogContent>
