@@ -3102,21 +3102,7 @@ function EditSubjectDialog({
               Set a teacher for subject-specific grade prediction
             </p>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="edit-subject-override">Manual Grade Override</Label>
-            <Input
-              id="edit-subject-override"
-              type="number"
-              min="1"
-              max="7"
-              value={overrideGrade}
-              onChange={e => setOverrideGrade(e.target.value)}
-              placeholder="Leave empty to use calculated grade"
-            />
-            <p className="text-xs text-muted-foreground">
-              Force a specific grade (1-7) regardless of assessments
-            </p>
-          </div>
+
           <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-4">
             <p className="text-[10px] text-muted-foreground/40 italic">Changes are saved automatically</p>
             <Button type="submit" size="sm">Save & Close</Button>
