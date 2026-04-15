@@ -451,7 +451,11 @@ export default function Home() {
 
   // Show auth screen if not logged in
   if (!session) {
-    return <Auth onLogin={() => { loadSubjects(); }} />;
+    return <Auth onLogin={async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setSession(session);
+      if (session) await loadSubjects();
+    }} />;
   }
 
   // Trends view

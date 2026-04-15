@@ -58,4 +58,4 @@ export type UserSettings = {
   total_percent_override: number | null
   created_at: string
   updated_at: string
-}
+}p
