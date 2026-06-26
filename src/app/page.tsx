@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Plus, Trash2, ChevronRight, TrendingUp, Home as HomeIcon, Pencil, Info, Mail, RefreshCw, MessageSquare, Menu, ArrowUpDown, SlidersHorizontal, Eye, EyeOff, History } from "lucide-react";
+import { Plus, Trash2, ChevronRight, TrendingUp, Home as HomeIcon, Pencil, Info, Mail, RefreshCw, MessageSquare, Menu, ArrowUpDown, SlidersHorizontal, Eye, EyeOff, History, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -106,6 +106,9 @@ export default function Home() {
   const [showChangelog, setShowChangelog] = useState(false);
   const [hasLoadedSavedState, setHasLoadedSavedState] = useState(false);
   const [userSettings, setUserSettings] = useState<UserSettings>({ includeBonus: false });
+  const [tuningOpen, setTuningOpen] = useState(false);
+  const [tuningObtained, setTuningObtained] = useState<number>(0);
+  const [tuningTotal, setTuningTotal] = useState<number>(0);
 
   useEffect(() => {
     try {
@@ -114,11 +117,28 @@ export default function Home() {
       
       const savedHiddenSubjects = localStorage.getItem('ib_tracker_hiddenSubjects');
       if (savedHiddenSubjects !== null) setHiddenSubjects(new Set(JSON.parse(savedHiddenSubjects)));
+
+      const savedObtained = localStorage.getItem('ib_tracker_tuningObtained');
+      if (savedObtained !== null) setTuningObtained(parseFloat(savedObtained));
+
+      const savedTotal = localStorage.getItem('ib_tracker_tuningTotal');
+      if (savedTotal !== null) setTuningTotal(parseFloat(savedTotal));
     } catch (e) {
       console.error('Failed to load hidden state from local storage', e);
     }
     setHasLoadedSavedState(true);
   }, []);
+
+  const handleTuningChange = (obtained: number, total: number) => {
+    setTuningObtained(obtained);
+    setTuningTotal(total);
+    try {
+      localStorage.setItem('ib_tracker_tuningObtained', String(obtained));
+      localStorage.setItem('ib_tracker_tuningTotal', String(total));
+    } catch (e) {
+      console.error('Failed to save tuning state', e);
+    }
+  };
 
   useEffect(() => {
     if (hasLoadedSavedState) {
@@ -421,11 +441,17 @@ export default function Home() {
   const totalWeightedPercentage = (() => {
     const activeSubjects = subjects.filter(s => {
       const isCore = s.type === 'CORE' || s.isCore;
-      if (isCore) return s.manualPercent !== null && s.manualPercent !== undefined;
+      if (isCore) {
+        if (!userSettings.includeBonus) return false;
+        return s.manualPercent !== null && s.manualPercent !== undefined;
+      }
       return s.assessments.length > 0 || s.manualPercent !== null || s.overrideGrade !== null;
     });
 
-    if (activeSubjects.length === 0) return 0;
+    const tuningCount = tuningTotal > 0 ? (tuningTotal / 100) : 0;
+    const totalCount = activeSubjects.length + tuningCount;
+
+    if (totalCount === 0) return 0;
 
     const sum = activeSubjects.reduce((acc, s) => {
       if (s.manualPercent !== null && s.manualPercent !== undefined) return acc + s.manualPercent;
@@ -442,7 +468,7 @@ export default function Home() {
       return acc + (localPred?.percentage ?? 0);
     }, 0);
 
-    return sum / activeSubjects.length;
+    return (sum + tuningObtained) / totalCount;
   })();
 
   if (loading) {
@@ -620,19 +646,29 @@ export default function Home() {
             </button>
           </div>
           
-          <div className="group relative mt-1">
+          <div className="group relative mt-1 flex items-center gap-1">
             <div className={`text-[11px] font-medium tracking-widest uppercase transition-all duration-300 ${hideTotalPercent ? 'text-muted-foreground/10' : 'text-muted-foreground/40'}`}>
               <span className="mr-2">AVG PERCENT:</span>
               <span className="font-bold font-mono">{hideTotalPercent ? '●●.●' : totalWeightedPercentage.toFixed(1)}%</span>
             </div>
-            <button
-              type="button"
-              className="absolute -right-6 top-1/2 -translate-y-1/2 flex items-center justify-center h-4 w-4 rounded-full text-muted-foreground/20 hover:text-muted-foreground transition-all opacity-0 group-hover:opacity-100"
-              onClick={() => setHideTotalPercent(!hideTotalPercent)}
-              title={hideTotalPercent ? 'Show average' : 'Hide average'}
-            >
-              {hideTotalPercent ? <Eye className="h-2.5 w-2.5" /> : <EyeOff className="h-2.5 w-2.5" />}
-            </button>
+            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+              <button
+                type="button"
+                className="flex items-center justify-center h-4 w-4 rounded-full text-muted-foreground/20 hover:text-muted-foreground transition-all"
+                onClick={() => setHideTotalPercent(!hideTotalPercent)}
+                title={hideTotalPercent ? 'Show average' : 'Hide average'}
+              >
+                {hideTotalPercent ? <Eye className="h-2.5 w-2.5" /> : <EyeOff className="h-2.5 w-2.5" />}
+              </button>
+              <button
+                type="button"
+                className="flex items-center justify-center h-4 w-4 rounded-full text-muted-foreground/20 hover:text-muted-foreground transition-all"
+                onClick={() => setTuningOpen(true)}
+                title="Tune average calculation"
+              >
+                <Settings className="h-2.5 w-2.5" />
+              </button>
+            </div>
           </div>
         </section>
 
@@ -742,16 +778,28 @@ export default function Home() {
         </div>
       </footer>
 
-      {/* Mini Bonus Toggle in corner - Bottom Right */}
-      <div className="fixed bottom-4 right-4 z-50 flex items-center space-x-2 bg-background/80 backdrop-blur-sm p-2 rounded-lg border border-border/50 opacity-40 hover:opacity-100 transition-opacity">
-        <Checkbox
-          id="bonus-mode-small"
-          checked={userSettings.includeBonus}
-          onCheckedChange={toggleBonus}
-        />
-        <Label htmlFor="bonus-mode-small" className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest cursor-pointer select-none">
-          Bonus
-        </Label>
+      {/* Mini Tuning & Bonus Controls in corner - Bottom Right */}
+      <div className="fixed bottom-4 right-4 z-50 flex items-center space-x-3 bg-background/80 backdrop-blur-sm p-2 rounded-lg border border-border/50 opacity-40 hover:opacity-100 transition-opacity">
+        <div className="flex items-center border-r border-border/50 pr-2">
+          <button
+            type="button"
+            className="flex items-center justify-center h-4 w-4 text-muted-foreground hover:text-foreground transition-colors"
+            onClick={() => setTuningOpen(true)}
+            title="Tune average calculation"
+          >
+            <Settings className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="bonus-mode-small"
+            checked={userSettings.includeBonus}
+            onCheckedChange={toggleBonus}
+          />
+          <Label htmlFor="bonus-mode-small" className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest cursor-pointer select-none">
+            Bonus
+          </Label>
+        </div>
       </div>
 
       {/* Changelog Dialog */}
@@ -828,6 +876,89 @@ export default function Home() {
           onUpdate={loadSubjects}
         />
       )}
+
+      {/* GPA Tuning Dialog */}
+      <Dialog open={tuningOpen} onOpenChange={setTuningOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings className="h-5 w-5" />
+              GPA Calculation Tuning
+            </DialogTitle>
+            <DialogDescription>
+              Adjust the overall average percentage calculation by adding virtual percentage points.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="tuning-obtained">Tuning Obtained Percentages (e.g. 200)</Label>
+              <Input
+                id="tuning-obtained"
+                type="number"
+                step="any"
+                value={tuningObtained || ''}
+                onChange={(e) => {
+                  const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                  handleTuningChange(val, tuningTotal);
+                }}
+                placeholder="0"
+                className="text-sm h-9"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Sum of percentages to add to the numerator.
+              </p>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="tuning-total">Tuning Total Percentages (e.g. 200)</Label>
+              <Input
+                id="tuning-total"
+                type="number"
+                step="any"
+                value={tuningTotal || ''}
+                onChange={(e) => {
+                  const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                  handleTuningChange(tuningObtained, val);
+                }}
+                placeholder="0"
+                className="text-sm h-9"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Total percentages to add to the denominator (e.g., 200% is equivalent to 2 classes of 100%).
+              </p>
+            </div>
+            
+            {(tuningObtained > 0 || tuningTotal > 0) && (
+              <div className="p-3 bg-primary/5 border border-primary/10 rounded-lg text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">Active Tuning:</span> Adding{' '}
+                <span className="font-semibold text-primary">{tuningObtained}%</span> obtained out of{' '}
+                <span className="font-semibold text-primary">{tuningTotal}%</span> total (equivalent to{' '}
+                <span className="font-mono font-semibold">{(tuningTotal / 100).toFixed(1)}</span> extra{' '}
+                {tuningTotal / 100 === 1 ? 'class' : 'classes'} at{' '}
+                <span className="font-mono font-semibold">
+                  {tuningTotal > 0 ? ((tuningObtained / tuningTotal) * 100).toFixed(1) : 0}%
+                </span>{' '}
+                average).
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                handleTuningChange(0, 0);
+              }}
+              disabled={tuningObtained === 0 && tuningTotal === 0}
+            >
+              Reset Tuning
+            </Button>
+            <Button size="sm" onClick={() => setTuningOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1033,6 +1164,7 @@ function SubjectGradeCard({
 
   const isCore = subject.type === 'CORE' || subject.isCore;
   const displayLetterGrade = isCore ? getSubjectLetterGrade(subject) : null;
+  const hasData = subject.assessments.length > 0 || subject.overrideGrade !== null && subject.overrideGrade !== undefined || subject.manualPercent !== null && subject.manualPercent !== undefined;
 
   // Determine color based on grade quality
   const getGradeColor = (grade: number) => {
@@ -1051,8 +1183,8 @@ function SubjectGradeCard({
           {/* Just the number and subject name - transparent, minimal */}
           <div className="flex flex-col items-center space-y-1">
             <div className="relative inline-flex items-center justify-center">
-              <span className={`${isCore ? 'text-2xl' : 'text-5xl'} font-semibold ${subject.assessments.length === 0 ? 'text-muted-foreground/30 font-medium' : hideScores ? 'text-muted-foreground/40' : getGradeColor(isCore ? 7 : displayGrade)}`}>
-                {subject.assessments.length === 0 ? '-' : hideScores ? '●' : isCore ? displayLetterGrade : displayGrade}
+              <span className={`${isCore ? 'text-2xl' : 'text-5xl'} font-semibold ${!hasData ? 'text-muted-foreground/30 font-medium' : hideScores ? 'text-muted-foreground/40' : getGradeColor(isCore ? 7 : displayGrade)}`}>
+                {!hasData ? '-' : hideScores ? '●' : isCore ? displayLetterGrade : displayGrade}
               </span>
               <button
                 type="button"
@@ -1068,7 +1200,7 @@ function SubjectGradeCard({
                 {subject.name.toLowerCase() === 'tok' ? 'Theory of Knowledge' : (subject.name.toLowerCase() === 'ee' ? 'Extended Essay' : subject.name)}
               </p>
               <p className={`${isCore ? 'text-[8px] opacity-30' : 'text-[9px] text-muted-foreground/40'} leading-tight`}>
-                {subject.assessments.length === 0 ? 'No data' : hideScores ? '●●%' : `${isCore ? `${displayLetterGrade || 'N'}` : `${displayPercentage.toFixed(0)}% • ${subject.type}`}`}
+                {!hasData ? 'No data' : hideScores ? '●●%' : `${isCore ? `${displayLetterGrade || 'N'} • ${displayPercentage.toFixed(0)}%` : `${displayPercentage.toFixed(0)}% • ${subject.type}`}`}
                 {isTeacher && subject.teacher && ` • ${subject.teacher.toUpperCase()}`}
               </p>
             </div>
