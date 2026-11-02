@@ -3003,6 +3003,10 @@ function CombinedTrendChart({
     return `${linePath} L ${lastPoint.x} ${bottomY} L ${firstPoint.x} ${bottomY} Z`;
   }
 
+  const isMixed = showPredicted && visibleSubjects.size>0;
+  // in mixed mode, subjects 1-7 need to map to 0-42 scale
+  const subjectY = (v:number) => isMixed ? v*6 : v;
+
   // Predicted points
   const predictedPoints = showPredicted ? d.map((point, index) => ({
     x: xScale(index),
@@ -3053,9 +3057,6 @@ function CombinedTrendChart({
 
   // range selector + snapshot info
   const snapshotNote = d.length>0 ? `${d.length} daily snapshots • ${formatDateForDisplay(d[0].date)} → ${formatDateForDisplay(d[d.length-1].date)}` : '';
-  const isMixed = showPredicted && visibleSubjects.size>0;
-  // in mixed mode, subjects 1-7 need to map to 0-42 scale
-  const subjectY = (v:number) => isMixed ? v*6 : v;
 
   return (
     <div className="w-full flex flex-col items-center gap-3">
