@@ -19,6 +19,7 @@ import Auth from "@/components/Auth";
 import { ManageCategoriesDialog } from "@/components/ManageCategoriesDialog";
 import { calculateLocalPrediction } from "@/lib/prediction";
 import { getTeacherConfig, getAllTeachers } from "@/lib/teachers";
+import { GradeYearFilter, GradeYearRanges, defaultGradeYearRanges, filterByGradeYear, getAssessmentGradeYear, isValidGradeYearRanges } from "@/lib/gradeYear";
 
 // Parse MM/DD/YYYY format to YYYY-MM-DD
 function parseDateInput(input: string): { valid: boolean; date: string; error?: string } {
@@ -109,9 +110,17 @@ export default function Home() {
   const [tuningOpen, setTuningOpen] = useState(false);
   const [tuningObtained, setTuningObtained] = useState<number>(0);
   const [tuningTotal, setTuningTotal] = useState<number>(0);
+  const [gradeYearRanges, setGradeYearRanges] = useState<GradeYearRanges>(() => defaultGradeYearRanges());
+  const [gradeYearOpen, setGradeYearOpen] = useState(false);
 
   useEffect(() => {
     try {
+      const savedRanges = localStorage.getItem('ib_tracker_gradeYearRanges');
+      if (savedRanges !== null) {
+        const parsed = JSON.parse(savedRanges);
+        if (isValidGradeYearRanges(parsed)) setGradeYearRanges(parsed);
+      }
+
       const savedHideMain = localStorage.getItem('ib_tracker_hideMainScore');
       if (savedHideMain !== null) setHideMainScore(JSON.parse(savedHideMain));
       
@@ -145,11 +154,12 @@ export default function Home() {
       try {
         localStorage.setItem('ib_tracker_hideMainScore', JSON.stringify(hideMainScore));
         localStorage.setItem('ib_tracker_hiddenSubjects', JSON.stringify(Array.from(hiddenSubjects)));
+        localStorage.setItem('ib_tracker_gradeYearRanges', JSON.stringify(gradeYearRanges));
       } catch (e) {
         console.error('Failed to save hidden state to local storage', e);
       }
     }
-  }, [hideMainScore, hiddenSubjects, hasLoadedSavedState]);
+  }, [hideMainScore, hiddenSubjects, gradeYearRanges, hasLoadedSavedState]);
 
   const supabase = createClient();
 
@@ -455,11 +465,11 @@ export default function Home() {
 
     const sum = activeSubjects.reduce((acc, s) => {
       if (s.manualPercent !== null && s.manualPercent !== undefined) return acc + s.manualPercent;
-      
+
       const midpoints: Record<number, number> = {
         7: 98, 6: 92, 5: 87, 4: 80, 3: 72, 2: 60, 1: 30
       };
-      
+
       if (s.overrideGrade !== null && s.overrideGrade !== undefined) {
         return acc + (midpoints[s.overrideGrade as number] || 0);
       }
@@ -699,6 +709,8 @@ export default function Home() {
                   subject={subject}
                   grade={grade}
                   percentage={percentage}
+                  gradeYearRanges={gradeYearRanges}
+                  onEditGradeYears={() => setGradeYearOpen(true)}
                   hideScores={hiddenSubjects.has(subject.id)}
                   onToggleHide={() => {
                     setHiddenSubjects(prev => {
@@ -814,6 +826,9 @@ export default function Home() {
           </DialogHeader>
           <div className="space-y-4 py-2">
             {[
+              { date: 'Nov 2, 2026', changes: [
+                'Gr 11 / Gr 12 / All dropdown on each subject (assessments auto-sort by date)',
+              ]},
               { date: 'Apr 1, 2026', changes: [
                 'Unified dashboard fonts and refined layout',
                 'Added Bonus Points matrix (TOK/EE) to help page',
@@ -876,6 +891,61 @@ export default function Home() {
           onUpdate={loadSubjects}
         />
       )}
+
+      {/* Grade Year Dialog */}
+      <Dialog open={gradeYearOpen} onOpenChange={setGradeYearOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings className="h-5 w-5" />
+              Grade Year Dates
+            </DialogTitle>
+            <DialogDescription>
+              Assessments are sorted into Gr 11 or Gr 12 by date. Each subject has a dropdown to show its grade for All, Gr 11 or Gr 12.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="gr11-start">Gr 11 starts</Label>
+              <Input
+                id="gr11-start"
+                type="date"
+                value={gradeYearRanges.gr11Start}
+                onChange={(e) => e.target.value && setGradeYearRanges(prev => ({ ...prev, gr11Start: e.target.value }))}
+                className="text-sm h-9"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="gr12-start">Gr 12 starts</Label>
+              <Input
+                id="gr12-start"
+                type="date"
+                value={gradeYearRanges.gr12Start}
+                onChange={(e) => e.target.value && setGradeYearRanges(prev => ({ ...prev, gr12Start: e.target.value }))}
+                className="text-sm h-9"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Gr 11 runs up to this date. Anything before the Gr 11 start date isn&apos;t counted in either year (it still shows under All).
+              </p>
+            </div>
+            {gradeYearRanges.gr11Start >= gradeYearRanges.gr12Start && (
+              <p className="text-[11px] text-destructive">Gr 11 must start before Gr 12.</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setGradeYearRanges(defaultGradeYearRanges())}
+            >
+              Reset to defaults
+            </Button>
+            <Button size="sm" onClick={() => setGradeYearOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* GPA Tuning Dialog */}
       <Dialog open={tuningOpen} onOpenChange={setTuningOpen}>
@@ -967,6 +1037,8 @@ function SubjectGradeCard({
   subject,
   grade,
   percentage,
+  gradeYearRanges,
+  onEditGradeYears,
   hideScores,
   onToggleHide,
   onAddAssessment,
@@ -979,6 +1051,8 @@ function SubjectGradeCard({
   subject: Subject;
   grade: number;
   percentage: number;
+  gradeYearRanges?: GradeYearRanges;
+  onEditGradeYears?: () => void;
   hideScores: boolean;
   onToggleHide: () => void;
   onAddAssessment: (sid: string, assessment: Omit<Assessment, 'id'>) => void;
@@ -1000,10 +1074,13 @@ function SubjectGradeCard({
   const [sortBy, setSortBy] = useState<'date' | 'grade' | 'name'>('date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [filterYear, setFilterYear] = useState<GradeYearFilter>('all');
   const [showSortFilter, setShowSortFilter] = useState(false);
 
   const sortedFilteredAssessments = useMemo(() => {
-    let list = [...subject.assessments];
+    let list = gradeYearRanges
+      ? [...filterByGradeYear(subject.assessments, filterYear, gradeYearRanges)]
+      : [...subject.assessments];
 
     // Filter by category
     if (filterCategory !== 'all') {
@@ -1028,7 +1105,7 @@ function SubjectGradeCard({
     });
 
     return list;
-  }, [subject.assessments, sortBy, sortDir, filterCategory]);
+  }, [subject.assessments, sortBy, sortDir, filterCategory, filterYear, gradeYearRanges]);
 
   const handleTeacherChange = (value: string) => {
     const newTeacher = value === 'general' ? null : value;
@@ -1166,6 +1243,29 @@ function SubjectGradeCard({
   const displayLetterGrade = isCore ? getSubjectLetterGrade(subject) : null;
   const hasData = subject.assessments.length > 0 || subject.overrideGrade !== null && subject.overrideGrade !== undefined || subject.manualPercent !== null && subject.manualPercent !== undefined;
 
+  // What the header shows: everything by default, or just one grade year's assessments.
+  // Manual overrides are subject-wide, so they only apply to the "All" view.
+  const yearView = !isCore && gradeYearRanges && filterYear !== 'all'
+    ? (() => {
+        const list = filterByGradeYear(subject.assessments, filterYear, gradeYearRanges);
+        if (list.length === 0) return { empty: true as const };
+        const teacherCalc = teacherConfig?.calculateGrade ? teacherConfig.calculateGrade(subject, list) : null;
+        const localPred = calculateLocalPrediction(subject, list, subject.categories || []);
+        return {
+          empty: false as const,
+          grade: teacherCalc?.grade ?? (localPred?.grade || calculatePredictedGrade(list)),
+          percentage: teacherCalc?.percentage ?? localPred?.percentage ?? calculatePercentage(list, subject.type),
+          details: teacherCalc?.explanation ?? localPred?.details,
+          isTeacher: !!teacherCalc,
+        };
+      })()
+    : null;
+  const shownGrade = yearView && !yearView.empty ? yearView.grade : displayGrade;
+  const shownPercentage = yearView && !yearView.empty ? yearView.percentage : displayPercentage;
+  const shownDetails = yearView && !yearView.empty ? yearView.details : predictionDetails;
+  const shownIsTeacher = yearView && !yearView.empty ? yearView.isTeacher : isTeacher;
+  const shownIsOverride = yearView ? false : isOverride;
+
   // Determine color based on grade quality
   const getGradeColor = (grade: number) => {
     if (grade >= 7) return 'text-green-600 dark:text-green-400';
@@ -1241,13 +1341,29 @@ function SubjectGradeCard({
               ) : (
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center gap-2">
-                    <span>Predicted Grade: <strong>{isCore ? displayLetterGrade : displayGrade}</strong> {!isCore && displayPercentage > 0 && `(${displayPercentage.toFixed(1)}%)`}</span>
-                    {isTeacher && subject.teacher && <span className="text-[10px] bg-blue-500 text-white px-1.5 py-0.5 rounded">{subject.teacher.toUpperCase()}</span>}
-                    {isOverride && <span className="text-[10px] bg-purple-500 text-white px-1.5 py-0.5 rounded">Manual</span>}
+                    {yearView?.empty ? (
+                      <span>No assessments in Gr {filterYear}</span>
+                    ) : (
+                      <span>Predicted Grade: <strong>{isCore ? displayLetterGrade : shownGrade}</strong> {!isCore && shownPercentage > 0 && `(${shownPercentage.toFixed(1)}%)`}</span>
+                    )}
+                    {shownIsTeacher && subject.teacher && <span className="text-[10px] bg-blue-500 text-white px-1.5 py-0.5 rounded">{subject.teacher.toUpperCase()}</span>}
+                    {shownIsOverride && <span className="text-[10px] bg-purple-500 text-white px-1.5 py-0.5 rounded">Manual</span>}
+                    {!isCore && gradeYearRanges && (
+                      <Select value={filterYear} onValueChange={(v) => setFilterYear(v as GradeYearFilter)}>
+                        <SelectTrigger className="h-6 w-auto min-w-[70px] text-xs px-2 py-0" title="Show grade for a grade year">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All</SelectItem>
+                          <SelectItem value="11">Gr 11</SelectItem>
+                          <SelectItem value="12">Gr 12</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
-                  {predictionDetails && (
+                  {shownDetails && (
                     <div className="text-xs text-muted-foreground mt-2 space-y-1 bg-muted/30 p-2 rounded-md border border-border/50">
-                      {predictionDetails.split(' • ').map((detail, i) => (
+                      {shownDetails.split(' • ').map((detail, i) => (
                         <div key={i} className="flex gap-2">
                           <span className="text-muted-foreground/50">•</span>
                           <span>{detail}</span>
@@ -1260,7 +1376,7 @@ function SubjectGradeCard({
             </div>
           </DialogDescription>
         </DialogHeader>
- 
+
         {/* Core Manual Percentage Input */}
         {isCore && (
           <div className="mx-6 my-2 p-3 bg-muted/20 border border-border/50 rounded-lg">
@@ -1354,6 +1470,15 @@ function SubjectGradeCard({
               >
                 {showSortFilter ? 'Hide sort & filter' : 'Sort & filter'}
               </button>
+              {onEditGradeYears && !isCore && (
+                <button
+                  type="button"
+                  className="ml-3 text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 cursor-pointer bg-transparent border-none p-0"
+                  onClick={onEditGradeYears}
+                >
+                  Gr 11/12 dates
+                </button>
+              )}
               {showSortFilter && (
                 <div className="flex flex-wrap items-center gap-2 text-xs mt-2">
                   {/* Sort By */}
@@ -1445,6 +1570,10 @@ function SubjectGradeCard({
                       <div className="font-medium truncate">{assessment.name}</div>
                       <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
                         <span>{formatDateForDisplay(assessment.date)}</span>
+                        {gradeYearRanges && !isCore && (() => {
+                          const year = getAssessmentGradeYear(assessment.date, gradeYearRanges);
+                          return year && <span className="text-[10px] text-muted-foreground/70">Gr {year}</span>;
+                        })()}
                         {assessment.categoryId && (
                           <span className="bg-secondary px-1.5 rounded text-[10px] truncate max-w-[100px]">
                             {subject.categories?.find(c => c.id === assessment.categoryId)?.name}
@@ -2687,58 +2816,58 @@ function TrendsView({ subjects, onBack, onShowHelp, supabase }: { subjects: Subj
 }
 
 function calculateTrendData(subjects: Subject[]) {
-  // Collect all unique dates from all assessments (normalize to YYYY-MM-DD format)
-  const dateMap = new Map<string, boolean>();
+  // DAILY SNAPSHOT: generate one point per day from first assessment to today/last assessment
+  // This makes the graph auto-accurate — grade stays flat between assessments, jumps only on real dates
+  const allDates: string[] = [];
+  subjects.forEach(s => s.assessments.forEach(a => allDates.push(a.date.split('T')[0])));
+  if (allDates.length === 0) return [];
+  const sorted = allDates.sort();
+  const start = new Date(sorted[0]);
+  const end = new Date(); // snapshot to today
+  // also include last assessment if it's in future vs today
+  const lastAssess = new Date(sorted[sorted.length - 1]);
+  const finalEnd = lastAssess > end ? lastAssess : end;
+  // cap to 365 days for perf, but allow full range
+  const days: string[] = [];
+  const cur = new Date(start);
+  cur.setHours(0,0,0,0);
+  finalEnd.setHours(0,0,0,0);
+  while (cur <= finalEnd) {
+    days.push(cur.toISOString().split('T')[0]);
+    cur.setDate(cur.getDate() + 1);
+  }
 
-  subjects.forEach(subject => {
-    subject.assessments.forEach(assessment => {
-      // Normalize date to ensure consistency
-      const normalizedDate = assessment.date.split('T')[0]; // Remove time if present
-      dateMap.set(normalizedDate, true);
+  const trendData: Array<{ date: string, predictedGrade: number, subjectGrades: { [key: string]: number }, isAssessmentDay: boolean }> = [];
+
+  // helper: predicted grade for a subject up to a date using weighted logic (fallback to simple avg)
+  const gradeUpTo = (subject: Subject, dateStr: string): number | null => {
+    if (subject.overrideGrade !== null && subject.overrideGrade !== undefined) return subject.overrideGrade;
+    const upTo = subject.assessments.filter(a => a.date.split('T')[0] <= dateStr);
+    if (upTo.length === 0) return null;
+    // Use local weighted prediction if possible (respects categories/weights)
+    try {
+      const pred = calculateLocalPrediction(subject, upTo, subject.categories || []);
+      if (pred) return pred.grade;
+    } catch {}
+    const valid = upTo.filter(a => a.ibGrade !== null && a.ibGrade !== undefined);
+    if (valid.length === 0) return null;
+    return Math.round(valid.reduce((s,a)=>s+(a.ibGrade||0),0)/valid.length);
+  };
+
+  const assessmentDays = new Set(allDates);
+
+  days.forEach(dateStr => {
+    const subjectGrades: Record<string, number> = {};
+    let total = 0;
+    let count = 0;
+    subjects.forEach(s => {
+      if (s.isCore) return; // exclude TOK/EE from subject lines (they go to bonus)
+      const g = gradeUpTo(s, dateStr);
+      if (g !== null) { subjectGrades[s.name] = g; total += g; count++; }
     });
-  });
-
-  // Sort dates chronologically
-  const uniqueDates = Array.from(dateMap.keys()).sort((a, b) =>
-    new Date(a).getTime() - new Date(b).getTime()
-  );
-
-  // For each unique date, calculate the predicted grade at that point in time
-  const trendData: Array<{ date: string, predictedGrade: number, subjectGrades: { [key: string]: number } }> = [];
-
-  uniqueDates.forEach(currentDate => {
-    const subjectGrades: { [key: string]: number } = {};
-    let totalGrade = 0;
-    let subjectsWithGrades = 0;
-
-    // For each subject, calculate its predicted grade up to this date
-    subjects.forEach(subject => {
-      const assessmentsUpToDate = subject.assessments.filter(a => {
-        const assessmentDate = a.date.split('T')[0];
-        return new Date(assessmentDate) <= new Date(currentDate);
-      });
-
-      if (assessmentsUpToDate.length > 0) {
-        const validAssessments = assessmentsUpToDate.filter(a => a.ibGrade !== null && a.ibGrade !== undefined);
-        if (validAssessments.length > 0) {
-          const avg = Math.round(
-            validAssessments.reduce((sum, a) => sum + (a.ibGrade || 0), 0) / validAssessments.length
-          );
-          subjectGrades[subject.name] = avg;
-          totalGrade += avg;
-          subjectsWithGrades++;
-        }
-      }
-    });
-
-    // Only include predicted total if all 6 subjects have at least one assessment
-    const predictedGrade = subjectsWithGrades === 6 ? totalGrade : 0;
-
-    trendData.push({
-      date: currentDate,
-      predictedGrade,
-      subjectGrades,
-    });
+    // predicted total: require at least 1 subject to show, sum whatever exists (more intuitive than hiding until 6)
+    const predictedGrade = count > 0 ? total : 0;
+    trendData.push({ date: dateStr, predictedGrade, subjectGrades, isAssessmentDay: assessmentDays.has(dateStr) });
   });
 
   return trendData;
@@ -2758,12 +2887,25 @@ function CombinedTrendChart({
   getSubjectColor: (index: number) => string;
 }) {
   const [hoveredDataIndex, setHoveredDataIndex] = useState<number | null>(null);
+  const [range, setRange] = useState<'30'|'90'|'all'>('all');
+  // filter to range for perf + intuition
+  const filteredData = useMemo(()=>{
+    if (range==='all' || data.length===0) return data;
+    const days = range==='30'?30:90;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate()-days);
+    const cutoffStr = cutoff.toISOString().split('T')[0];
+    const f = data.filter(d=>d.date>=cutoffStr);
+    return f.length>=2?f:data.slice(-days);
+  },[data,range]);
 
-  if (data.length === 0) {
+  const d = filteredData;
+
+  if (d.length === 0) {
     return <p className="text-center text-muted-foreground py-8">No data available</p>;
   }
 
-  if (data.length === 1) {
+  if (d.length === 1) {
     return <p className="text-center text-muted-foreground py-8">Need at least 2 dates to show trend graph</p>;
   }
 
@@ -2772,7 +2914,7 @@ function CombinedTrendChart({
 
   const onlySubjects = !showPredicted && visibleSubjects.size > 0;
   const onlyPredicted = showPredicted && visibleSubjects.size === 0;
-  const showYAxis = onlySubjects || onlyPredicted;
+  const showYAxis = true; // always show — no more confusing dual-scale
 
   const padding = { top: 30, right: 30, bottom: 50, left: showYAxis ? 70 : 30 };
 
@@ -2780,7 +2922,7 @@ function CombinedTrendChart({
   let dataMin = Infinity;
   let dataMax = -Infinity;
 
-  data.forEach(point => {
+  d.forEach(point => {
     if (showPredicted && point.predictedGrade > 0) {
       dataMin = Math.min(dataMin, point.predictedGrade);
       dataMax = Math.max(dataMax, point.predictedGrade);
@@ -2793,28 +2935,20 @@ function CombinedTrendChart({
     });
   });
 
-  // Apply dynamic range with padding
+  // FIXED intuitive scale: 1-7 for subjects, 0-42 for total — no more jumping axis
   let yMin: number, yMax: number;
   if (onlyPredicted) {
-    const range = dataMax - dataMin;
-    const pad = Math.max(range * 0.3, 2);
-    yMin = Math.max(0, Math.floor(dataMin - pad));
-    yMax = Math.min(45, Math.ceil(dataMax + pad));
+    yMin = 0; yMax = 42;
   } else if (onlySubjects) {
-    const range = dataMax - dataMin;
-    const pad = Math.max(range * 0.4, 0.5);
-    yMin = Math.max(1, Math.floor(dataMin - pad));
-    yMax = Math.min(7, Math.ceil(dataMax + pad));
+    yMin = 1; yMax = 7;
   } else {
-    const range = dataMax - dataMin;
-    const pad = Math.max(range * 0.3, 1);
-    yMin = Math.max(0, Math.floor(dataMin - pad));
-    yMax = Math.ceil(dataMax + pad);
+    // mixed: use 0-42 but subject lines map 1-7 -> *6 to align (we keep separate? for now 0-42)
+    yMin = 0; yMax = 42;
   }
 
   const xScale = (index: number) => {
-    if (data.length === 1) return chartWidth / 2;
-    return padding.left + (index / (data.length - 1)) * (chartWidth - padding.left - padding.right);
+    if (d.length === 1) return chartWidth / 2;
+    return padding.left + (index / (d.length - 1)) * (chartWidth - padding.left - padding.right);
   };
 
   const yScale = (value: number) => {
@@ -2823,6 +2957,16 @@ function CombinedTrendChart({
 
   const bottomY = chartHeight - padding.bottom;
 
+  // Banding helper + paths
+  // Step path: accurate (flat between days, jumps on assessment) vs smooth (old ugly)
+  function stepPath(points: Array<{ x: number; y: number }>): string {
+    if (points.length < 2) return '';
+    let d='M '+points[0].x+' '+points[0].y;
+    for(let i=1;i<points.length;i++){
+      d+=' L '+points[i].x+' '+points[i-1].y+' L '+points[i].x+' '+points[i].y;
+    }
+    return d;
+  }
   // Catmull-Rom to cubic Bézier smooth path
   function smoothPath(points: Array<{ x: number; y: number }>): string {
     if (points.length < 2) return '';
@@ -2853,14 +2997,14 @@ function CombinedTrendChart({
   // Build a closed area path for gradient fill
   function areaPath(points: Array<{ x: number; y: number }>): string {
     if (points.length < 2) return '';
-    const linePath = smoothPath(points);
+    const linePath = stepPath(points);
     const lastPoint = points[points.length - 1];
     const firstPoint = points[0];
     return `${linePath} L ${lastPoint.x} ${bottomY} L ${firstPoint.x} ${bottomY} Z`;
   }
 
   // Predicted points
-  const predictedPoints = showPredicted ? data.map((point, index) => ({
+  const predictedPoints = showPredicted ? d.map((point, index) => ({
     x: xScale(index),
     y: yScale(point.predictedGrade),
     value: point.predictedGrade,
@@ -2872,13 +3016,14 @@ function CombinedTrendChart({
   subjects.forEach((subject, subjectIndex) => {
     if (!visibleSubjects.has(subject.name)) return;
 
-    const points: Array<{ x: number, y: number, dataIndex: number }> = [];
-    data.forEach((point, dataIndex) => {
+    const points: Array<{ x: number, y: number, dataIndex: number, isAssess: boolean }> = [];
+    d.forEach((point, dataIndex) => {
       if (point.subjectGrades[subject.name] !== undefined) {
         points.push({
           x: xScale(dataIndex),
-          y: yScale(point.subjectGrades[subject.name]),
+          y: yScale(subjectY(point.subjectGrades[subject.name])),
           dataIndex,
+          isAssess: (point as any).isAssessmentDay,
         });
       }
     });
@@ -2906,10 +3051,24 @@ function CombinedTrendChart({
     return labels;
   }
 
+  // range selector + snapshot info
+  const snapshotNote = d.length>0 ? `${d.length} daily snapshots • ${formatDateForDisplay(d[0].date)} → ${formatDateForDisplay(d[d.length-1].date)}` : '';
+  const isMixed = showPredicted && visibleSubjects.size>0;
+  // in mixed mode, subjects 1-7 need to map to 0-42 scale
+  const subjectY = (v:number) => isMixed ? v*6 : v;
+
   return (
-    <div className="w-full flex justify-center relative">
+    <div className="w-full flex flex-col items-center gap-3">
+      <div className="flex items-center gap-2 text-xs">
+        <span className="text-muted-foreground mr-1">{snapshotNote}</span>
+        {(['30','90','all'] as const).map(r=>(
+          <button key={r} onClick={()=>setRange(r)} className={`px-2.5 py-1 rounded-full border text-xs font-medium ${range===r?'bg-foreground text-background border-foreground':'bg-background border-border text-muted-foreground hover:border-foreground/30'}`}>{r==='all'?'All':r+'d'}</button>
+        ))}
+        <span className="ml-2 text-[10px] text-muted-foreground hidden sm:inline">daily snapshot • flat between assessments = accurate</span>
+      </div>
+    <div className="w-full flex justify-center relative"> 
       {hoveredDataIndex !== null && (() => {
-        const dataPoint = data[hoveredDataIndex];
+        const dataPoint = d[hoveredDataIndex];
         const hoveredItems: Array<{ label: string, value: number, color: string }> = [];
 
         if (showPredicted && dataPoint.predictedGrade > 0) {
@@ -2969,6 +3128,15 @@ function CombinedTrendChart({
           )}
         </defs>
 
+        {/* Banded background — intuitive zones (green 6-7, yellow 5, red 1-4) — only for subject view */}
+        {!onlyPredicted && (
+          <>
+            <rect x={padding.left} y={yScale(isMixed?42:7)} width={chartWidth - padding.left - padding.right} height={yScale(isMixed?36:6)-yScale(isMixed?42:7)} fill="#dcfce7" opacity="0.35" rx="6" />
+            <rect x={padding.left} y={yScale(isMixed?36:6)} width={chartWidth - padding.left - padding.right} height={yScale(isMixed?30:5)-yScale(isMixed?36:6)} fill="#fef3c7" opacity="0.45" />
+            <rect x={padding.left} y={yScale(isMixed?30:5)} width={chartWidth - padding.left - padding.right} height={yScale(yMin)-yScale(isMixed?30:5)} fill="#fee2e2" opacity="0.30" />
+          </>
+        )}
+
         {/* Horizontal grid lines */}
         {showYAxis && generateYLabels().map((label) => (
           <line
@@ -3000,9 +3168,9 @@ function CombinedTrendChart({
         {/* X-axis labels */}
         {(() => {
           const maxLabels = 8;
-          const step = Math.max(1, Math.ceil(data.length / maxLabels));
-          return data.map((point, index) => {
-            if (index !== 0 && index !== data.length - 1 && index % step !== 0) {
+          const step = Math.max(1, Math.ceil(d.length / maxLabels));
+          return d.map((point, index) => {
+            if (index !== 0 && index !== d.length - 1 && index % step !== 0) {
               return null;
             }
             return (
@@ -3021,7 +3189,7 @@ function CombinedTrendChart({
 
         {/* Subject area fills + smooth lines */}
         {subjectPaths.map((subjectPath) => {
-          const lineD = smoothPath(subjectPath.points);
+          const lineD = stepPath(subjectPath.points); // daily snapshot = step, not smooth invented curve
           const fillD = areaPath(subjectPath.points);
 
           return (
@@ -3044,14 +3212,16 @@ function CombinedTrendChart({
                   strokeLinejoin="round"
                 />
               )}
-              {/* Points */}
-              {subjectPath.points.map((point, index) => (
+              {/* Dots only on real assessment days — daily line stays clean */}
+              {subjectPath.points.filter(p=> (p as any).isAssess).map((point, index) => (
                 <circle
                   key={index}
                   cx={point.x}
                   cy={point.y}
-                  r="3"
+                  r="3.5"
                   fill={subjectPath.color}
+                  stroke="white"
+                  strokeWidth="1.5"
                   style={{ cursor: 'pointer' }}
                   onMouseEnter={() => setHoveredDataIndex(point.dataIndex)}
                   onMouseLeave={() => setHoveredDataIndex(null)}
@@ -3074,7 +3244,7 @@ function CombinedTrendChart({
             {/* Smooth line */}
             {predictedPoints.length > 1 && (
               <path
-                d={smoothPath(predictedPoints)}
+                d={stepPath(predictedPoints)}
                 fill="none"
                 stroke="#6366f1"
                 strokeWidth="3"
@@ -3098,6 +3268,7 @@ function CombinedTrendChart({
           </g>
         )}
       </svg>
+    </div>
     </div>
   );
 }

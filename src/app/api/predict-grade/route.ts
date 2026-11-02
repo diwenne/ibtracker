@@ -178,7 +178,7 @@ Output strictly in this JSON format:
         console.log('[AI PREDICT] Uncategorized weight:', uncategorizedWeight);
 
         const completion = await openai.chat.completions.create({
-            model: "gpt-3.5-turbo",
+            model: process.env.OPENAI_MODEL || "gpt-4o-mini",
             messages: [
                 {
                     role: "system",
